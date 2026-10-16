@@ -2,7 +2,7 @@
 
 A small, self-hosted X (Twitter) stats dashboard. Track follower growth and per-post metrics (impressions, likes, replies, reposts) for one or more accounts, with daily history and a per-post drill-in. Ships as a single Go binary.
 
-![Dashboard, dark theme](docs/dark-desktop.png)
+![Dashboard, dark theme, fake demo data](docs/dark-desktop.png)
 
 ## Features
 
@@ -59,6 +59,16 @@ bin/xstats serve  --db data/xstats.db --addr 127.0.0.1:8080
 ```
 
 Open http://127.0.0.1:8080. Handy URL options: `?theme=dark|light`, `?acct=<handle>`, `#post/<id>`.
+
+## Demo with fake data
+
+`scripts/seed.py` writes 30 days of made-up snapshots for two fictional accounts (`example_one`, `example_two`). The screenshots in this README come from it.
+
+```
+scripts/seed.py /tmp/seed 30
+bin/xstats ingest --db /tmp/demo.db /tmp/seed/*.json
+bin/xstats serve  --db /tmp/demo.db --addr 127.0.0.1:8080
+```
 
 ## Snapshot format
 
