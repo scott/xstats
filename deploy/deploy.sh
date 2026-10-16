@@ -44,7 +44,7 @@ REMOTE
 
 # Ingest token over stdin into /etc/xstats/env (0640 root:xstats).
 TOKEN_FILE="${XSTATS_TOKEN_FILE:-$HOME/.config/xstats/ingest_token}"
-ssh "${O[@]}" "$T" 'install -d -m 0750 -g xstats /etc/xstats; umask 027; { printf "XSTATS_INGEST_TOKEN="; cat; echo; echo "XSTATS_ACCOUNTS=${XSTATS_ACCOUNTS:-}"; } > /etc/xstats/env; chgrp xstats /etc/xstats/env; systemctl restart xstats' < "$TOKEN_FILE"
+ssh "${O[@]}" "$T" 'install -d -m 0750 -g xstats /etc/xstats; umask 027; { printf "XSTATS_INGEST_TOKEN="; cat; echo; echo "XSTATS_ACCOUNTS='"${XSTATS_ACCOUNTS:-}"'"; } > /etc/xstats/env; chgrp xstats /etc/xstats/env; systemctl restart xstats' < "$TOKEN_FILE"
 
 # Password goes over stdin only: never on a command line, in a file, or in logs.
 printf '%s\n' "$BASIC_AUTH_PASSWORD" | ssh "${O[@]}" "$T" "bash /tmp/set-auth.sh $XSTATS_DOMAIN $XSTATS_AUTH_USER"
