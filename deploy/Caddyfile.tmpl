@@ -1,0 +1,13 @@
+__DOMAIN__ {
+	encode gzip
+	@ingest path /api/ingest
+	handle @ingest {
+		reverse_proxy 127.0.0.1:8080
+	}
+	handle {
+		basic_auth {
+			__USER__ __HASH__
+		}
+		reverse_proxy 127.0.0.1:8080
+	}
+}

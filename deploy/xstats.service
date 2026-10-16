@@ -1,0 +1,15 @@
+[Unit]
+Description=xstats X dashboard
+After=network.target
+
+[Service]
+User=xstats
+EnvironmentFile=/etc/xstats/env
+ExecStart=/usr/local/bin/xstats serve --db /var/lib/xstats/xstats.db --addr 127.0.0.1:8080
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/xstats
+
+[Install]
+WantedBy=multi-user.target

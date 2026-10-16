@@ -1,0 +1,11 @@
+data/
+raw/
+bin/
+*.db
+*.db-*
+*.db.*
+*.netrc
+netrc
+.env
+.env.*
+ingest_token
