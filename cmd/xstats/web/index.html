@@ -102,5 +102,5 @@ async function openP(id){const r=await fetch('/api/post/'+id);if(!r.ok){$('pn').
  ${h.length<2?'<div class="empty">Charts fill in as daily snapshots run.</div>':''}`;$('ov').classList.add('open')}
 function route(){const m=location.hash.match(/^#post\/(\d+)$/);if(m)openP(m[1]);else $('ov').classList.remove('open')}
 addEventListener('hashchange',route);
-fetch('/api/data').then(r=>r.json()).then(d=>{D=d;HANDLES=Object.keys(D.accounts).sort();if(!D.accounts[cur])cur=HANDLES[0];render();route()}).catch(e=>{$('fc').textContent='Error'});
+fetch('/api/data').then(r=>r.json()).then(d=>{D=d;const ks=Object.keys(D.accounts).sort();HANDLES=(D.order||[]).filter(h=>D.accounts[h]);ks.forEach(h=>{if(!HANDLES.includes(h))HANDLES.push(h)});if(!D.accounts[cur])cur=HANDLES[0];render();route()}).catch(e=>{$('fc').textContent='Error'});
 </script></body></html>

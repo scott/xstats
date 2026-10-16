@@ -126,6 +126,8 @@ Target: a fresh Ubuntu 22.04 or 24.04 server (512 MB is plenty). Nothing is comp
    unset BASIC_AUTH_PASSWORD
    ```
 
+Put these in `~/.config/xstats/deploy.env` (mode 0600, see `.env.deploy.example`) so `deploy.sh` and `push.sh` pick them up automatically. Keep `BASIC_AUTH_PASSWORD` out of that file and export it only when deploying.
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `XSTATS_HOST` | required | Server IP or hostname for SSH |
@@ -135,8 +137,12 @@ Target: a fresh Ubuntu 22.04 or 24.04 server (512 MB is plenty). Nothing is comp
 | `XSTATS_SSH_USER` | `root` | SSH user |
 | `SSH_KEY` | `~/.ssh/id_ed25519` | SSH private key path |
 | `XSTATS_TOKEN_FILE` | `~/.config/xstats/ingest_token` | Ingest token file |
+| `XSTATS_ACCOUNTS` | unset | Optional tab order, e.g. `alice,bob`; first is the default |
+| `STATS_URL` | required for push | Base URL used by `snapshot/push.sh` |
 
 `deploy.sh` installs Caddy from its official apt repo, creates an `xstats` system user, installs the binary to `/usr/local/bin`, the unit from `deploy/xstats.service`, and the token in `/etc/xstats/env` (mode 0640). The password is sent over SSH stdin and hashed on the server with `caddy hash-password`; only the bcrypt hash is stored. The script is idempotent.
+
+Each deploy keeps the previous binary as `/usr/local/bin/xstats.prev` and backs up the database to `/var/lib/xstats/xstats.db.bak-<timestamp>`.
 
 To update only the binary later:
 

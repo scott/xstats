@@ -165,6 +165,16 @@ func apiData(db *sql.DB) (any, error) {
 		accts[a.h] = map[string]any{"name": a.n, "avatar": a.a, "history": hist, "posts": posts}
 	}
 	out["accounts"] = accts
+	// Optional display order, e.g. XSTATS_ACCOUNTS=alice,bob (first is the default tab).
+	if v := strings.TrimSpace(os.Getenv("XSTATS_ACCOUNTS")); v != "" {
+		var order []string
+		for _, h := range strings.Split(v, ",") {
+			if h = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(h, "@"))); accts[h] != nil {
+				order = append(order, h)
+			}
+		}
+		out["order"] = order
+	}
 	var ct []map[string]any
 	r, _ := db.Query(`SELECT date,visits FROM clickthroughs ORDER BY date`)
 	for r.Next() {

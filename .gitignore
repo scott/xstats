@@ -9,3 +9,6 @@ netrc
 .env
 .env.*
 ingest_token
+.env.deploy
+deploy.env
+!.env.deploy.example

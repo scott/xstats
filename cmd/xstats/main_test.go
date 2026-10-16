@@ -58,6 +58,15 @@ func TestRetweetsSkippedRepliesFlagged(t *testing.T) {
 	}
 }
 
+func TestAccountOrder(t *testing.T) {
+	mux, ing := testDB(t)
+	ing("a.json", bundle("2026-10-14", 1))
+	t.Setenv("XSTATS_ACCOUNTS", "@Demo,missing")
+	if !strings.Contains(get(mux, "/api/data").Body.String(), `"order":["demo"]`) {
+		t.Fatal("order not applied")
+	}
+}
+
 func TestBadIDAndIngestAuth(t *testing.T) {
 	mux, _ := testDB(t)
 	if get(mux, "/api/post/abc").Code != 400 {
