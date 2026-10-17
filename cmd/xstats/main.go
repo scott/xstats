@@ -98,6 +98,13 @@ func ingestBytes(db *sql.DB, b []byte) error {
 		if _, err := tx.Exec(`INSERT INTO follower_snapshots VALUES(?,?,?,?,?) ON CONFLICT(account,date) DO UPDATE SET followers=excluded.followers,following=excluded.following,posts=excluded.posts`, h, r.Date, u.PM.Followers, u.PM.Following, u.PM.Tweets); err != nil {
 			return err
 		}
+		// Re-pushing a date fully replaces that account's post rows for the date.
+		// An empty posts list is treated as "no data" and leaves existing rows alone.
+		if len(a.Posts) > 0 {
+			if _, err := tx.Exec(`DELETE FROM post_metrics WHERE account=? AND date=?`, h, r.Date); err != nil {
+				return err
+			}
+		}
 		for _, p := range a.Posts {
 			if strings.HasPrefix(p.Text, "RT @") {
 				continue // retweets are not stored

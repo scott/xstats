@@ -62,6 +62,7 @@ tr.pr{cursor:pointer}tr.pr:hover td{background:color-mix(in srgb,var(--acc) 6%,t
 </div>
 <div class="ov" id="ov"><div class="pn" id="pn"></div></div>
 <script>
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')},dl=d=>d===today()?'Today (in progress)':d;
 const $=id=>document.getElementById(id),fmt=n=>n==null?'-':n.toLocaleString('en-US');
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let HANDLES=[];let D,cur=new URLSearchParams(location.search).get('acct')||localStorage.getItem('acct')||HANDLES[0];
@@ -78,13 +79,13 @@ function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||
  const line=h.length>1?`<path d="M${pts.join(' L')} L${x(h.length-1)},${H} L${x(0)},${H}Z" fill="url(#gr${key})"/><path d="M${pts.join(' L')}" fill="none" stroke="var(--acc)" stroke-width="2.5"/>`:'';
  const lp=pts[pts.length-1].split(',');
  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;margin-top:10px"><defs><linearGradient id="gr${key}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--acc)" stop-opacity=".4"/><stop offset="1" stop-color="var(--acc)" stop-opacity="0"/></linearGradient></defs>${g}${line}<circle cx="${lp[0]}" cy="${lp[1]}" r="5" fill="var(--acc)"/></svg>
- <div class="sub" style="display:flex;justify-content:space-between"><span>${h[0].date}</span><span>${h[h.length-1].date}</span></div>
+ <div class="sub" style="display:flex;justify-content:space-between"><span>${h[0].date}</span><span>${dl(h[h.length-1].date)}</span></div>
  ${h.length<2&&!opts.quiet?'<div class="empty">First snapshot taken '+h[0].date+'. The growth line fills in as daily snapshots run.</div>':''}`}
 function render(){const a=D.accounts[cur];if(!a){$('fc').textContent='No data';return}
  $('sw').innerHTML=HANDLES.map(h=>`<option value="${h}"${h==cur?' selected':''}>@${h}</option>`).join('');
  $('sw').onchange=e=>{cur=e.target.value;localStorage.setItem('acct',cur);render()};
  const h=a.history,last=h[h.length-1];$('fc').textContent=fmt(last.followers);$('fg').textContent=fmt(last.following);$('pc').textContent=fmt(last.posts);
- $('delta').innerHTML=sign(dlt(h,30))+' <span class="sub">last 30 days</span>';$('d7').innerHTML=sign(dlt(h,7));$('snap').textContent='Last snapshot: '+last.date;
+ $('delta').innerHTML=sign(dlt(h,30))+' <span class="sub">last 30 days</span>';$('d7').innerHTML=sign(dlt(h,7));$('snap').textContent='Last snapshot: '+dl(last.date);
  $('chart').innerHTML=chart(h);
  $('ctc').style.display=(D.clickthroughs||[]).length?'':'none';const c=D.clickthroughs||[];
  $('ct').innerHTML=c.length?`<div class="big">${fmt(c.reduce((s,r)=>s+r.visits,0))}</div><div class="sub">visits from x.com and t.co, ${c[0].date} to ${c[c.length-1].date}</div>`
@@ -100,7 +101,7 @@ async function openP(id){const r=await fetch('/api/post/'+id);if(!r.ok){$('pn').
  const M=[['impressions','Impressions'],['likes','Likes'],['replies','Replies'],['reposts','Reposts']];
  $('pn').innerHTML=`<button class="x" onclick="closeP()" aria-label="Close">\u00d7</button><div class="lbl">@${p.account} \u00b7 ${new Date(p.created_at).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}</div>
  <div class="ptext">${esc(p.text)}</div><a class="plink" href="${p.url}" target="_blank" rel="noopener">View on x.com \u2197</a>
- <div class="sub" style="margin-top:6px">${h.length} daily snapshot${h.length==1?'':'s'}, ${h[0].date} to ${last.date}</div>
+ <div class="sub" style="margin-top:6px">${h.length} daily snapshot${h.length==1?'':'s'}, ${h[0].date} to ${dl(last.date)}</div>
  <div class="mg">${M.map(([k,l])=>`<div class="card"><div class="lbl">${l}</div><div class="mv">${fmt(last[k])}</div><div class="sub">${prev?sign(last[k]-prev[k])+' since '+prev.date:'first snapshot'}</div>${chart(h,k,{W:300,H:120,fs:12,quiet:1})}</div>`).join('')}</div>
  ${h.length<2?'<div class="empty">Charts fill in as daily snapshots run.</div>':''}`;$('ov').classList.add('open')}
 function route(){const m=location.hash.match(/^#post\/(\d+)$/);if(m)openP(m[1]);else $('ov').classList.remove('open')}

@@ -58,6 +58,28 @@ func TestRetweetsSkippedRepliesFlagged(t *testing.T) {
 	}
 }
 
+func TestSameDateReplacesRows(t *testing.T) {
+	mux, ing := testDB(t)
+	ing("a.json", bundle("2026-10-14", 1))
+	ing("b.json", bundle("2026-10-15", 2))
+	// Second push for 10-15 without post 111 and with new follower count.
+	ing("c.json", `{"date":"2026-10-15","accounts":{"demo":{"user":{"id":"1","username":"demo","public_metrics":{"followers_count":12}},
+	"posts":[{"id":"333","text":"@a reply","created_at":"2026-10-15T12:00:00.000Z","public_metrics":{"like_count":7}}]}}}`)
+	h := get(mux, "/api/post/111").Body.String()
+	if strings.Count(h, `"date"`) != 1 || strings.Contains(h, "2026-10-15") {
+		t.Fatalf("stale row kept: %s", h)
+	}
+	d := get(mux, "/api/data").Body.String()
+	if strings.Count(d, `"date":"2026-10-15"`) != 1 || !strings.Contains(d, `"followers":12`) {
+		t.Fatalf("follower row not replaced: %s", d)
+	}
+	// Empty posts list keeps existing rows.
+	ing("d.json", `{"date":"2026-10-15","accounts":{"demo":{"user":{"id":"1","username":"demo","public_metrics":{"followers_count":13}},"posts":[]}}}`)
+	if !strings.Contains(get(mux, "/api/post/333").Body.String(), `"likes":7`) {
+		t.Fatal("empty push wiped rows")
+	}
+}
+
 func TestAccountOrder(t *testing.T) {
 	mux, ing := testDB(t)
 	ing("a.json", bundle("2026-10-14", 1))
