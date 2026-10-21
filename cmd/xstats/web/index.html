@@ -92,14 +92,15 @@ function shortText(s){s=(s||'').replace(/\s+/g,' ').trim();return s.length>42?s.
 function dayHead(date){return date===today()?'Today (in progress)':new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})}
 function tipHTML(e,date){
  const head=dayHead(date);
- const scored=e.impressions>0&&typeof e.score==='number'&&Number.isFinite(e.score);
+ const scored=typeof e.score==='number'&&Number.isFinite(e.score);
  let delta='';
  if(scored&&typeof e.score_delta==='number'&&Number.isFinite(e.score_delta)){const d=e.score_delta,cls=d>0?'up':d<0?'down':'sub';delta=`<span class="${cls}" style="margin-left:auto;font-size:12px;white-space:nowrap">${d>0?'+':''}${f1(d)} vs 7-day avg</span>`}
  const rows=EROWS.map(([k,lab])=>`<div class="rw"><span>${lab}</span><span>${fmt(+e[k]||0)}</span></div>`).join('');
  const impr=e.impressions?compact(e.impressions):'0';
  let top='';if(e.top_post&&e.top_post.url)top=`<div class="sub" style="margin-top:4px">Top post: <a href="${esc(e.top_post.url)}" target="_blank" rel="noopener">${esc(shortText(e.top_post.text))}</a></div>`;
- const note=e.impressions>0?'':'<div class="sub" style="margin-top:6px">No bar: this day has 0 impressions.</div>';
- return `<div class="lbl">${esc(head)}</div><div class="sc"><b>${scored?f1(e.score):'\u2014'}</b><span class="sub">${scored?'score':'no score'}</span>${delta}</div>${rows}<div class="ft sub">${impr} impressions</div>${top}${note}`}
+ const num=scored?fmt(Math.round(e.score)):'\u2014';
+ const color=scored&&e.score<0?'var(--down)':'var(--bar)';
+ return `<div class="lbl">${esc(head)}</div><div class="sc"><b style="color:${color}">${num}</b><span class="sub">${scored?'points':'no score'}</span>${delta}</div>${rows}<div class="ft sub">${impr} impressions</div>${top}`}
 function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||(innerWidth<820?30:15);const W=opts.W||800,H=opts.H||220,P=opts.W?28:40,B=opts.bars||null,PR=B?(fs>20?78:46):10;if(!h.length)return '<div class="empty">No snapshots yet.</div>';
  const ys=h.map(s=>s[key]),mn=Math.min(...ys),mx=Math.max(...ys),r=Math.max(mx-mn,4),lo=mn-r*.25,hi=mx+r*.25;
  const basePL=(fs>20&&!opts.W)?P*2:P,labelW=Math.ceil(Math.max(fmt(Math.round(lo)).length,fmt(Math.round(hi)).length)*fs*.62)+12;
@@ -123,12 +124,14 @@ function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||
   const t0=parseDay(h[0].date),byDate={};
   h.forEach((s,i)=>{byDate[s.date]={s,v:B[i]}});
   const gap=Math.min(4,slot*0.15),bw=Math.max(1,slot-gap);
-  if(vals.length){const max=Math.max(...vals),raw=max/4,pow=Math.pow(10,Math.floor(Math.log10(raw))),n=raw/pow,step=(n<=1?1:n<=2?2:n<=5?5:10)*pow;
-   const smax=Math.ceil((max-1e-9)/step)*step||step,yb=v=>(H-20)-(H*.48)*v/smax;
+  if(vals.length){const max=Math.max(...vals),raw=Math.max(max,1)/4,pow=Math.pow(10,Math.floor(Math.log10(raw))),n=raw/pow;
+   const step=Math.max(1,(n<=1?1:n<=2?2:n<=5?5:10)*pow);
+   const smax=Math.ceil(max/step)*step,yb=v=>(H-20)-(H*.48)*v/smax;
    for(let i=0;i<nDays;i++){const ds=iso(new Date(t0.getFullYear(),t0.getMonth(),t0.getDate()+i)),row=byDate[ds],v=row?row.v:null;if(!(v>0))continue;
     const cx=PL+slot*(i+0.5),bh=Math.max(0,H-20-yb(v));
     bars+=`<rect class="bar" data-date="${ds}" x="${(cx-bw/2).toFixed(1)}" y="${yb(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="var(--bar)" fill-opacity="0.38" pointer-events="none"/>`}
-   const nTicks=Math.round(smax/step);for(let i=0;i<=nTicks;i++){const rv=Math.round(i*step*1e6)/1e6;ax2+=`<text x="${W-2}" y="${(yb(rv)+4).toFixed(1)}" text-anchor="end" fill="var(--bar)" font-size="${fs}" pointer-events="none">${step<1?f1(rv):fmt(Math.round(rv))}</text>`}}
+   ax2+=`<text x="${W-2}" y="${Math.max(12,(yb(smax)-fs)).toFixed(1)}" text-anchor="end" fill="var(--bar)" font-size="${fs}" pointer-events="none">points</text>`;
+   const nTicks=Math.round(smax/step);for(let i=0;i<=nTicks;i++){const rv=i*step;ax2+=`<text x="${W-2}" y="${(yb(rv)+4).toFixed(1)}" text-anchor="end" fill="var(--bar)" font-size="${fs}" pointer-events="none">${fmt(rv)}</text>`}}
   guide=`<line class="gline" y1="12" y2="${H-20}" stroke="var(--mut)" stroke-dasharray="3 3" stroke-opacity=".6" visibility="hidden" pointer-events="none"/>`;
   halo=`<circle class="ghalo" r="4.5" fill="var(--bg)" stroke="var(--acc)" stroke-width="2.5" visibility="hidden" pointer-events="none"/>`;
   for(let i=0;i<nDays;i++){const ds=iso(new Date(t0.getFullYear(),t0.getMonth(),t0.getDate()+i)),row=byDate[ds],cx=PL+slot*(i+0.5);

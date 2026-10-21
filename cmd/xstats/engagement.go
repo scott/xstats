@@ -53,12 +53,14 @@ type scoredPost struct {
 
 // dayEngagement is the per-account, per-snapshot-day score.
 //
-// Score is nil when Impressions is 0 (no divide by zero). NewFollowers on the
-// first snapshot is 0: there is no prior day to subtract. InProgress is true
-// when Date equals today, because that snapshot can still be re-pushed.
-// ScoreDelta is this score minus the mean score of earlier days in the
-// previous 7 calendar days; days with no score are skipped. Nil when this
-// day has no score or the window has none.
+// Score is the weighted points total, including days with 0 impressions.
+// Points is the same number, kept so older clients still find it. A negative
+// total (followers dropped) is returned; the chart draws no bar unless the
+// score is greater than 0. NewFollowers on the first snapshot is 0: there is
+// no prior day to subtract. InProgress is true when Date equals today,
+// because that snapshot can still be re-pushed. ScoreDelta is this score
+// minus the mean score of earlier snapshot days in the previous 7 calendar
+// days. Nil when the window has no scored day.
 type dayEngagement struct {
 	Date                                    string
 	Comments, NewFollowers, Reshares, Likes int
@@ -169,10 +171,8 @@ func aggregateDays(hist []histDay, posts []scoredPost, today string, loc *time.L
 			}
 		}
 		e.Points = dayLevelPoints(e.Comments, e.NewFollowers, e.Reshares, e.Likes)
-		if e.Impressions > 0 {
-			sc := float64(e.Points) * 1000 / float64(e.Impressions)
-			e.Score = &sc
-		}
+		sc := float64(e.Points)
+		e.Score = &sc
 		out[i] = e
 	}
 	for i := range out {

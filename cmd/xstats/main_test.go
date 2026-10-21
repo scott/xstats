@@ -195,15 +195,16 @@ func TestAggregateDays(t *testing.T) {
 	}
 	posts := []scoredPost{
 		// First day. new_followers must be 0 (no prior snapshot), not omitted.
-		{ID: "p1", Text: "first", CreatedAt: "2026-09-01T12:00:00.000Z", Impressions: 1000, Likes: 50},
-		// Zero impressions: score stays nil (no divide by zero) even with a follower drop.
+		// Impressions are not 1000, so a rate would not equal the points total.
+		{ID: "p1", Text: "first", CreatedAt: "2026-09-01T12:00:00.000Z", Impressions: 2500, Likes: 50},
+		// Zero impressions still scores. The follower drop makes the total negative.
 		{ID: "p2", Text: "quiet", CreatedAt: "2026-09-02T12:00:00Z", Impressions: 0, Likes: 4, Replies: 1},
-		{ID: "p3", Text: "scored", CreatedAt: "2026-09-03T12:00:00Z", Impressions: 1000, Likes: 10},
+		{ID: "p3", Text: "scored", CreatedAt: "2026-09-03T12:00:00Z", Impressions: 2000, Likes: 10},
 		// 05:30Z on Sep 5 is 23:30 MT on Sep 4, so this stays on the Sep 4 snapshot.
-		{ID: "p4", Text: "offset", CreatedAt: "2026-09-05T05:30:00Z", Impressions: 1000, Likes: 5},
+		{ID: "p4", Text: "offset", CreatedAt: "2026-09-05T05:30:00Z", Impressions: 500, Likes: 5},
 		{ID: "skip", Text: "bad", CreatedAt: "", Impressions: 99999, Likes: 99999},
 		{ID: "old", Text: "unaligned", CreatedAt: "2026-08-01T12:00:00Z", Impressions: 99999, Likes: 99999},
-		{ID: "p5", Text: "latest", CreatedAt: "2026-09-10T12:00:00Z", Impressions: 1000, Likes: 16},
+		{ID: "p5", Text: "latest", CreatedAt: "2026-09-10T12:00:00Z", Impressions: 4000, Likes: 16},
 	}
 	loc := denver(t)
 	got := aggregateDays(hist, posts, "2026-09-10", loc)
@@ -212,7 +213,7 @@ func TestAggregateDays(t *testing.T) {
 	}
 
 	d0 := got[0]
-	if d0.NewFollowers != 0 || d0.Score == nil || *d0.Score != 50 || d0.InProgress || d0.Points != 50 {
+	if d0.NewFollowers != 0 || d0.Score == nil || *d0.Score != 50 || d0.Points != 50 || d0.InProgress {
 		t.Fatalf("first day: %+v score %v", d0, scoreOr(d0.Score))
 	}
 	if d0.ScoreDelta != nil {
@@ -220,18 +221,16 @@ func TestAggregateDays(t *testing.T) {
 	}
 
 	d1 := got[1]
-	if d1.NewFollowers != -10 || d1.Impressions != 0 || d1.Score != nil || d1.Points != dayLevelPoints(1, -10, 0, 4) {
-		t.Fatalf("zero impressions: %+v", d1)
+	wantQuiet := dayLevelPoints(1, -10, 0, 4)
+	if d1.NewFollowers != -10 || d1.Impressions != 0 || d1.Score == nil || *d1.Score != float64(wantQuiet) || d1.Points != wantQuiet {
+		t.Fatalf("zero impressions: %+v score %v", d1, scoreOr(d1.Score))
 	}
-	if d1.ScoreDelta != nil {
-		t.Fatal("nil score should not have a delta")
-	}
-	if math.IsInf(float64(d1.Points), 0) {
-		t.Fatal("inf")
+	if d1.ScoreDelta == nil || math.Abs(*d1.ScoreDelta-float64(wantQuiet-50)) > 1e-9 {
+		t.Fatalf("zero-impression delta %v", scoreOr(d1.ScoreDelta))
 	}
 
-	// 09-10's prior window is [09-03, 09-10). 09-01 (score 50) is outside it.
-	// 09-02 has no score. Average of 09-03 (10) and 09-04 (5) is 7.5; delta is 8.5.
+	// 09-10's prior window is [09-03, 09-10). 09-01 (50) and 09-02 are outside it.
+	// Average of 09-03 (10) and 09-04 (5) is 7.5; delta is 8.5.
 	last := got[4]
 	if !last.InProgress || last.Score == nil || *last.Score != 16 {
 		t.Fatalf("today: %+v score %v", last, scoreOr(last.Score))
@@ -239,10 +238,10 @@ func TestAggregateDays(t *testing.T) {
 	if last.ScoreDelta == nil || math.Abs(*last.ScoreDelta-8.5) > 1e-9 {
 		t.Fatalf("delta %v", scoreOr(last.ScoreDelta))
 	}
-	if got[2].InProgress || got[3].Date != "2026-09-04" || got[3].Likes != 5 || got[3].Impressions != 1000 {
+	if got[2].InProgress || got[3].Date != "2026-09-04" || got[3].Likes != 5 || got[3].Impressions != 500 {
 		t.Fatalf("zone bucket: %+v %+v", got[2], got[3])
 	}
-	if got[2].Score == nil || *got[2].Score != 10 || got[3].Score == nil || *got[3].Score != 5 {
+	if got[2].Score == nil || *got[2].Score != 10 || got[2].Points != 10 || got[3].Score == nil || *got[3].Score != 5 || got[3].Points != 5 {
 		t.Fatal("window inputs")
 	}
 	// 09-01 must not have been pulled into 09-10.
@@ -272,11 +271,15 @@ func TestTopPostTieBreak(t *testing.T) {
 
 func TestNegativeScore(t *testing.T) {
 	hist := []histDay{{Date: "2026-10-01", Followers: 100}, {Date: "2026-10-02", Followers: 90}}
-	posts := []scoredPost{{ID: "1", CreatedAt: "2026-10-02T18:00:00Z", Impressions: 1000}}
+	posts := []scoredPost{{ID: "1", CreatedAt: "2026-10-02T18:00:00Z", Impressions: 500}}
 	got := aggregateDays(hist, posts, "2026-01-01", denver(t))
 	wantPts := dayLevelPoints(0, -10, 0, 0)
 	if got[1].NewFollowers != -10 || got[1].Points != wantPts || got[1].Score == nil || *got[1].Score != float64(wantPts) {
 		t.Fatalf("negative: %+v score %v", got[1], scoreOr(got[1].Score))
+	}
+	// impressions/1000 would have turned -40 into -80.
+	if *got[1].Score == float64(wantPts)*1000/500 {
+		t.Fatal("negative score was divided by impressions")
 	}
 }
 
@@ -367,8 +370,8 @@ func TestEngagementIngest(t *testing.T) {
 	if asInt(row0["followers"]) != 40 || asInt(row0["following"]) != 1 || asInt(row0["posts"]) != 2 {
 		t.Fatalf("history fields changed: %v", row0)
 	}
-	// First snapshot: new followers are 0. Zero impressions: no score.
-	if asInt(e0["new_followers"]) != 0 || asInt(e0["impressions"]) != 0 || e0["score"] != nil || asInt(e0["points"]) != 7 || e0["in_progress"] == true {
+	// First snapshot: new followers are 0. Zero impressions still score the points total.
+	if asInt(e0["new_followers"]) != 0 || asInt(e0["impressions"]) != 0 || asInt(e0["score"]) != 7 || asInt(e0["points"]) != 7 || e0["in_progress"] == true {
 		t.Fatalf("d0 %+v", e0)
 	}
 	if e0["top_post"].(map[string]any)["id"] != "1" {
@@ -388,10 +391,11 @@ func TestEngagementIngest(t *testing.T) {
 		t.Fatalf("d1 points %v", e1["points"])
 	}
 	sc, ok := asF(t, e1["score"])
-	if !ok || math.Abs(sc-97*1000/2500.0) > 1e-9 {
-		t.Fatalf("d1 score %v", e1["score"])
+	if !ok || sc != 97 || asInt(e1["points"]) != 97 {
+		t.Fatalf("d1 score %v points %v", e1["score"], e1["points"])
 	}
-	if e1["score_delta"] != nil || e1["in_progress"] == true {
+	d1delta, ok := asF(t, e1["score_delta"])
+	if !ok || math.Abs(d1delta-(97-7)) > 1e-9 || e1["in_progress"] == true {
 		t.Fatalf("d1 flags %+v", e1)
 	}
 	top := e1["top_post"].(map[string]any)
@@ -410,7 +414,7 @@ func TestEngagementIngest(t *testing.T) {
 	if asInt(e1["impressions"]) != 4500 || asInt(e1["likes"]) != 50 || asInt(e1["comments"]) != 2 || asInt(e1["reshares"]) != 7 {
 		t.Fatalf("latest snapshot not used: %+v", e1)
 	}
-	if asInt(e1["points"]) != 110 {
+	if asInt(e1["points"]) != 110 || asInt(e1["score"]) != 110 {
 		t.Fatalf("d1 points after update %v", e1["points"])
 	}
 	if e1["top_post"].(map[string]any)["id"] != "2" {
@@ -424,11 +428,11 @@ func TestEngagementIngest(t *testing.T) {
 		t.Fatalf("today %+v", e2)
 	}
 	sc, ok = asF(t, e2["score"])
-	if !ok || math.Abs(sc-21) > 1e-9 {
+	if !ok || sc != 21 || asInt(e2["points"]) != 21 {
 		t.Fatalf("today score %v", e2["score"])
 	}
 	delta, ok := asF(t, e2["score_delta"])
-	wantDelta := 21 - (110 * 1000 / 4500.0)
+	wantDelta := 21 - (7.0+110)/2
 	if !ok || math.Abs(delta-wantDelta) > 1e-6 {
 		t.Fatalf("today delta %v want %v", e2["score_delta"], wantDelta)
 	}
@@ -450,8 +454,8 @@ func TestEngagementIngest(t *testing.T) {
 		t.Fatalf("re-push today %+v", e2)
 	}
 	sc, ok = asF(t, e2["score"])
-	if !ok || math.Abs(sc-30) > 1e-9 {
-		t.Fatalf("re-push score %v", e2["score"])
+	if !ok || sc != 45 || asInt(e2["points"]) != 45 {
+		t.Fatalf("re-push score %v points %v", e2["score"], e2["points"])
 	}
 	_, e1 = histEng(t, root, "demo", d1)
 	if asInt(e1["impressions"]) != 4500 {
@@ -484,10 +488,13 @@ func itoaN(n int) string {
 func TestPageMarksEngagement(t *testing.T) {
 	mux, _ := testDB(t)
 	body := get(mux, "/").Body.String()
-	for _, s := range []string{"Engagement score", "--bar:#a371f7", "--bar:#8250df", "No bar: this day has 0 impressions.", "No snapshot", "grid-template-columns:1fr auto"} {
+	for _, s := range []string{"Engagement score", "--bar:#a371f7", "--bar:#8250df", "No snapshot", "grid-template-columns:1fr auto", ">points<"} {
 		if !strings.Contains(body, s) {
 			t.Fatalf("page missing %q", s)
 		}
+	}
+	if strings.Contains(body, "No bar: this day has 0 impressions.") {
+		t.Fatal("zero-impressions explanation must not ship")
 	}
 	if strings.Contains(body, "Example data") || strings.Contains(body, "EXAMPLE DATA") {
 		t.Fatal("example-data label must not ship")
@@ -507,12 +514,13 @@ func TestEveningMountainTime(t *testing.T) {
 		t.Fatalf("denver day of 05:30Z %s", today)
 	}
 	hist := []histDay{{Date: "2026-10-14", Followers: 10}, {Date: "2026-10-15", Followers: 12}}
-	posts := []scoredPost{{ID: "eve", Text: "late", CreatedAt: "2026-10-15T05:30:00Z", Impressions: 1000, Likes: 3}}
+	posts := []scoredPost{{ID: "eve", Text: "late", CreatedAt: "2026-10-15T05:30:00Z", Impressions: 250, Likes: 3}}
 	got := aggregateDays(hist, posts, today, loc)
-	if !got[0].InProgress || got[0].Likes != 3 || got[0].Score == nil || *got[0].Score != 3 {
+	if !got[0].InProgress || got[0].Likes != 3 || got[0].Score == nil || *got[0].Score != 3 || got[0].Points != 3 {
 		t.Fatalf("evening post %+v score %v", got[0], scoreOr(got[0].Score))
 	}
-	if got[1].InProgress || got[1].Likes != 0 || got[1].Impressions != 0 || got[1].Score != nil {
-		t.Fatalf("next utc day %+v", got[1])
+	// The next snapshot has no posts. Its score is the follower change only.
+	if got[1].InProgress || got[1].Likes != 0 || got[1].Impressions != 0 || got[1].Score == nil || *got[1].Score != 8 || got[1].Points != 8 {
+		t.Fatalf("next utc day %+v score %v", got[1], scoreOr(got[1].Score))
 	}
 }
