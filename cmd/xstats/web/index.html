@@ -102,9 +102,10 @@ function tipHTML(e,date){const w=weights();
  return `<div class="lbl">${esc(head)}</div><div class="sc"><b>${scored?f1(e.score):'\u2014'}</b><span class="sub">${scored?'score':'no score'}</span>${delta}</div>${rows}<div class="ft sub"><b style="color:var(--fg)">${fmt(e.points)} ${pt}</b> / ${impr} impressions</div>${top}${note}`}
 function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||(innerWidth<820?30:15);const W=opts.W||800,H=opts.H||220,P=opts.W?28:40,B=opts.bars||null,PR=B?(fs>20?78:46):10;if(!h.length)return '<div class="empty">No snapshots yet.</div>';
  const ys=h.map(s=>s[key]),mn=Math.min(...ys),mx=Math.max(...ys),r=Math.max(mx-mn,4),lo=mn-r*.25,hi=mx+r*.25;
- const PL=(fs>20&&!opts.W)?P*2:P,x=i=>h.length==1?W-PR:PL+(W-PL-PR)*i/(h.length-1),y=v=>16+(H-36)*(1-(v-lo)/(hi-lo));
+ const basePL=(fs>20&&!opts.W)?P*2:P,labelW=Math.ceil(Math.max(fmt(Math.round(lo)).length,fmt(Math.round(hi)).length)*fs*.62)+12;
+ const PL=B?Math.max(basePL,labelW):basePL,x=i=>h.length==1?W-PR:PL+(W-PL-PR)*i/(h.length-1),y=v=>16+(H-36)*(1-(v-lo)/(hi-lo));
  const pts=h.map((s,i)=>`${x(i).toFixed(1)},${y(s[key]).toFixed(1)}`);let g='';
- const xGrid=B?W-PR+10:W,st=Math.max(1,Math.ceil((hi-lo)/4));for(let v=Math.max(0,Math.ceil(lo/st)*st);v<=hi;v+=st){const yy=y(v);g+=`<line x1="${PL}" x2="${xGrid}" y1="${yy}" y2="${yy}" stroke="var(--grid)"/><text x="0" y="${yy+4}" fill="var(--mut)" font-size="${fs}">${fmt(v)}</text>`}
+ const xGrid=B?W-PR+10:W,st=Math.max(1,Math.ceil((hi-lo)/4));for(let v=Math.max(0,Math.ceil(lo/st)*st);v<=hi;v+=st){const yy=y(v);g+=`<line x1="${PL}" x2="${xGrid}" y1="${yy}" y2="${yy}" stroke="var(--grid)"/><text x="${B?PL-8:0}" y="${yy+4}" text-anchor="${B?'end':'start'}" fill="var(--mut)" font-size="${fs}">${fmt(v)}</text>`}
  const line=h.length>1?`<path d="M${pts.join(' L')} L${x(h.length-1)},${H} L${x(0)},${H}Z" fill="url(#gr${key})"/><path d="M${pts.join(' L')}" fill="none" stroke="var(--acc)" stroke-width="2.5"/>`:'';
  const lp=pts[pts.length-1].split(',');
  let bars='',ax2='',guide='',halo='',hits='';
@@ -138,9 +139,14 @@ function bindTip(h){const root=$('chart'),svg=root.querySelector('svg');if(!svg)
  const show=(i,pin)=>{if(i<0||!h[i]||!h[i].engagement){hideTip();return}
   tip.innerHTML=tipHTML(h[i].engagement,h[i].date);tip.hidden=false;if(pin)tip.dataset.pin='1';
   tip.style.pointerEvents=tip.dataset.pin==='1'?'auto':'none';highlight(i);
-  const sr=svg.getBoundingClientRect(),rr=root.getBoundingClientRect();
-  const bx=sr.left-rr.left+(+hits[i].dataset.x)*(sr.width/vb);
-  let left=bx-tip.offsetWidth-12;if(left<4)left=bx+12;const max=root.clientWidth-tip.offsetWidth-4;if(left>max)left=Math.max(4,max);
+  const sr=svg.getBoundingClientRect(),rr=root.getBoundingClientRect(),vbw=svg.viewBox.baseVal.width||vb;
+  const scale=sr.width/vbw,bx=sr.left-rr.left+(+hits[i].dataset.x)*scale;
+  const grid=svg.querySelector('line'),plotLeft=grid?(+grid.getAttribute('x1'))*scale:0;
+  const minL=Math.max(4,plotLeft+6),maxL=Math.max(minL,root.clientWidth-tip.offsetWidth-4);
+  let left=bx-tip.offsetWidth-14;
+  if(left<minL)left=bx+16;
+  if(left>maxL)left=maxL;
+  if(left<minL)left=minL;
   tip.style.left=left+'px';tip.style.top='16px'};
  svg.addEventListener('pointermove',e=>{if(e.pointerType==='touch'||tip.dataset.pin==='1')return;show(idxFrom(e),false)});
  svg.addEventListener('pointerdown',e=>{show(idxFrom(e),true)});
