@@ -8,7 +8,7 @@ A small, self-hosted X (Twitter) stats dashboard. Track follower growth and per-
 
 - Account switcher for any number of accounts
 - Current follower count with 7 and 30 day deltas
-- Follower growth chart built from daily snapshots
+- Follower growth chart built from daily snapshots, with a daily engagement-score bar
 - Recent posts table (last 30 days), retweets excluded, replies hidden behind a toggle
 - Per-post drill-in with impressions, likes, replies and reposts over time
 - Light and dark themes (follows the system, remembers your choice), responsive down to phone width
@@ -37,7 +37,7 @@ A small, self-hosted X (Twitter) stats dashboard. Track follower growth and per-
 - **One binary.** `xstats` embeds the static frontend with `go:embed` and uses `modernc.org/sqlite`, so it builds with `CGO_ENABLED=0` and has no runtime dependencies.
 - **SQLite.** Tables: `accounts`, `follower_snapshots` (one row per account per day), `post_metrics` (one row per post per day), `clickthroughs` (one row per day). Re-ingesting a day upserts, so it is always safe to rerun.
 - **Ingest API.** `POST /api/ingest` with `Authorization: Bearer <token>` accepts a snapshot bundle. The token comes from `XSTATS_INGEST_TOKEN`; if it is unset, ingest is disabled.
-- **Read API.** `GET /api/data` (all accounts, history, recent posts) and `GET /api/post/<id>` (daily history for one post).
+- **Read API.** `GET /api/data` (accounts, follower history, daily engagement, recent posts) and `GET /api/post/<id>` (daily history for one post).
 - **Caddy** terminates TLS with automatic certificates and puts basic auth in front of everything except `/api/ingest`.
 
 xstats does not call the X API itself. Collect data with whatever client you like and hand it the raw JSON.
@@ -95,6 +95,26 @@ One JSON file per day. The `user` and `posts` objects are the X API v2 responses
 - `date` defaults to today if omitted. `clickthroughs` is optional.
 - Posts starting with `RT @` are skipped. Posts starting with `@` or with `in_reply_to_user_id` are flagged as replies.
 - Reposts shown in the UI are `retweet_count + quote_count`.
+
+## Engagement score
+
+Each follower-history day on `GET /api/data` includes an `engagement` object. Existing history fields are unchanged. The response also includes the weights once:
+
+```json
+"engagement_weights": {"comments": 3, "new_followers": 4, "reshares": 2, "likes": 1}
+```
+
+```
+score = (3×comments + 4×new_followers + 2×reshares + 1×likes) / (impressions/1000)
+```
+
+- **comments** are `reply_count`. **likes** are `like_count`. **reshares** are `retweet_count + quote_count`, the value already stored in `post_metrics.reposts`.
+- Posts are summed on the UTC calendar day of `created_at`, the same clock as the 30-day posts window. Each post is counted once, from its latest snapshot, so re-pushing a day replaces that snapshot instead of double-counting. The chart's x-axis is still the follower snapshot dates; a post whose UTC day has no snapshot is not drawn.
+- **new_followers** is the change from the previous follower snapshot. The first snapshot has no prior day, so new followers are 0.
+- When a day's impressions are 0, `score` is null and the chart draws no bar. The hover card says so.
+- `in_progress` is true when that snapshot date is the server's local today, because the day can still be re-pushed. The page labels the browser's local today as "Today (in progress)", same as the follower line.
+- `score_delta` is this score minus the average score of earlier snapshot days in the previous 7 calendar days. Days with no score are left out of the average.
+- `top_post` is the post created that day with the most post-level points (`3×replies + 2×reshares + 1×likes`). Ties prefer more impressions, then the lower post id. The link is `https://x.com/<handle>/status/<id>`.
 
 Suggested X API v2 calls per day (3 reads for two accounts):
 

@@ -135,7 +135,11 @@ func ingestBytes(db *sql.DB, b []byte) error {
 }
 
 func apiData(db *sql.DB) (any, error) {
-	out := map[string]any{"generated": time.Now().Format(time.RFC3339)}
+	out := map[string]any{
+		"generated":          time.Now().Format(time.RFC3339),
+		"engagement_weights": engagementWeights(),
+	}
+	today := time.Now().Format("2006-01-02")
 	accts := map[string]any{}
 	rows, err := db.Query(`SELECT handle,name,avatar FROM accounts`)
 	if err != nil {
@@ -159,6 +163,19 @@ func apiData(db *sql.DB) (any, error) {
 			hist = append(hist, map[string]any{"date": d, "followers": f, "following": g, "posts": p})
 		}
 		r.Close()
+		if len(hist) > 0 {
+			postsForScore, err := loadLatestPosts(db, a.h)
+			if err != nil {
+				return nil, err
+			}
+			snaps := make([]histDay, len(hist))
+			for i, row := range hist {
+				snaps[i] = histDay{Date: row["date"].(string), Followers: row["followers"].(int)}
+			}
+			for i, e := range aggregateDays(snaps, postsForScore, today) {
+				hist[i]["engagement"] = engagementJSON(a.h, e)
+			}
+		}
 		var posts []map[string]any
 		r, _ = db.Query(`SELECT post_id,text,created_at,impressions,likes,replies,reposts,is_reply FROM post_metrics m WHERE account=? AND created_at>=? AND date=(SELECT MAX(date) FROM post_metrics WHERE post_id=m.post_id) ORDER BY created_at DESC LIMIT 100`, a.h, time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339))
 		for r.Next() {
