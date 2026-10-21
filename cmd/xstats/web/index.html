@@ -2,8 +2,8 @@
 <title>X Stats</title>
 <script>(function(){var q=new URLSearchParams(location.search),t=q.get('theme')||localStorage.getItem('theme');if(!t)t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=t})()</script>
 <style>
-:root{--bg:#07090d;--card:#0d1117cc;--bd:#1f2733;--row:#151b23;--fg:#e6edf3;--mut:#8b98a5;--acc:#1d9bf0;--up:#00d68f;--down:#ff5c7a;--grid:#1a222c;--glow1:#0d2a3f55;--glow2:#2a0d3f44;--sw:#0f141b}
-[data-theme=light]{--bg:#f5f7fa;--card:#ffffffe6;--bd:#dde3ea;--row:#eef1f5;--fg:#0f1419;--mut:#5b6773;--acc:#1d8fe0;--up:#00a36c;--down:#d6344f;--grid:#e6ebf0;--glow1:#cfe6f755;--glow2:#ead7f744;--sw:#eef1f5}
+:root{--bar:#a371f7;--bg:#07090d;--card:#0d1117cc;--bd:#1f2733;--row:#151b23;--fg:#e6edf3;--mut:#8b98a5;--acc:#1d9bf0;--up:#00d68f;--down:#ff5c7a;--grid:#1a222c;--glow1:#0d2a3f55;--glow2:#2a0d3f44;--sw:#0f141b}
+[data-theme=light]{--bar:#8250df;--bg:#f5f7fa;--card:#ffffffe6;--bd:#dde3ea;--row:#eef1f5;--fg:#0f1419;--mut:#5b6773;--acc:#1d8fe0;--up:#00a36c;--down:#d6344f;--grid:#e6ebf0;--glow1:#cfe6f755;--glow2:#ead7f744;--sw:#eef1f5}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg);background-image:radial-gradient(circle at 20% 0,var(--glow1),transparent 50%),radial-gradient(circle at 90% 20%,var(--glow2),transparent 40%);min-height:100vh}
 .wrap{max-width:1200px;margin:0 auto;padding:28px}
 header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
@@ -43,6 +43,19 @@ tr.pr{cursor:pointer}tr.pr:hover td{background:color-mix(in srgb,var(--acc) 6%,t
 .wrap{padding:16px}.grid{grid-template-columns:1fr}.big{font-size:44px}
  table thead{display:none}table,tbody,tr,td{display:block;width:100%}tr{border-bottom:1px solid var(--row);padding:10px 0}td{border:0;padding:2px 0;text-align:left}
  td.n{display:inline-block;width:auto;margin-right:14px;font-size:13px}td.n::before{content:attr(data-l)' ';color:var(--mut);font-size:11px;text-transform:uppercase}}
+.ch-h{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.ch{position:relative;touch-action:manipulation}
+.lg{display:flex;gap:16px;align-items:center;font-size:12px;color:var(--mut)}
+.lg i{display:inline-block;vertical-align:middle;margin-right:6px}
+.lg .ln{width:16px;height:3px;border-radius:2px;background:var(--acc)}
+.lg .br{width:9px;height:12px;border-radius:2px;background:var(--bar);opacity:.7}
+.tip{position:absolute;z-index:5;width:240px;max-width:calc(100% - 8px);background:var(--sw);border:1px solid var(--bd);border-radius:10px;padding:12px 14px;font-size:13px;box-shadow:0 10px 30px #0007;font-variant-numeric:tabular-nums}
+[data-theme=light] .tip{box-shadow:0 10px 30px #0f141926}
+.tip .sc{display:flex;align-items:baseline;gap:8px;margin:4px 0 10px}.tip .sc b{font-size:24px;color:var(--bar)}
+.tip .rw{display:grid;grid-template-columns:1fr auto;gap:8px;padding:5px 0;border-top:1px solid var(--row)}
+.tip .rw span:nth-child(2){font-weight:600;text-align:right}
+.tip .ft{border-top:1px solid var(--bd);margin-top:4px;padding-top:8px}
+.tip a{color:var(--acc);text-decoration:none;pointer-events:auto}.tip a:hover{text-decoration:underline}
 </style></head><body><div class="wrap">
 <header><div class="logo">X<span>/</span>stats</div>
 <div class="right"><label class="sel"><span class="sr" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Account</span><select id="sw" aria-label="Account"></select></label><button class="tt" id="tt" title="Toggle theme" aria-label="Toggle theme"></button></div></header>
@@ -54,7 +67,7 @@ tr.pr{cursor:pointer}tr.pr:hover td{background:color-mix(in srgb,var(--acc) 6%,t
    <div class="sub" style="margin-top:18px" id="snap"></div></div>
   <div class="card" id="ctc"><div class="lbl">Clickthroughs from X</div><div id="ct"></div></div>
  </div>
- <div class="card"><div class="lbl">Follower growth</div><div id="chart"></div></div>
+ <div class="card"><div class="ch-h"><div class="lbl">Follower growth</div><div class="lg"><span><i class="ln"></i>Followers</span><span><i class="br"></i>Engagement score</span></div></div><div id="chart" class="ch"></div></div>
 </div>
 <div class="card" style="margin-top:20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div class="lbl">Recent posts, last 30 days</div><label class="sub" style="cursor:pointer"><input type="checkbox" id="incr"> Include replies</label></div>
 <table><thead><tr><th>Post</th><th>Impressions</th><th>Likes</th><th>Replies</th><th>Reposts</th></tr></thead><tbody id="rows"></tbody></table>
@@ -71,22 +84,103 @@ $('tt').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'li
 function dlt(h,days){if(h.length<2)return null;const last=h[h.length-1],cut=new Date(last.date);cut.setDate(cut.getDate()-days);
  let base=h[0];for(const s of h)if(new Date(s.date)<=cut)base=s;return last.followers-base.followers}
 function sign(v){return v==null?'<span class="sub">n/a</span>':`<span class="${v<0?'down':'up'}">${v>0?'+':''}${fmt(v)}</span>`}
-function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||(innerWidth<820?30:15);const W=opts.W||800,H=opts.H||220,P=opts.W?28:40;if(!h.length)return '<div class="empty">No snapshots yet.</div>';
+const EROWS=[['comments','Comments'],['new_followers','New followers'],['reshares','Reshares'],['likes','Likes']];
+function f1(n){const v=Math.round(n*10)/10;return (v===0?0:v).toFixed(1)}
+function trim1(n){const s=f1(n);return s.endsWith('.0')?s.slice(0,-2):s}
+function compact(n){const a=Math.abs(n),sign=n<0?'-':'';if(a>=1e6)return sign+trim1(a/1e6)+'m';if(a>=1000)return sign+trim1(a/1000)+'k';return fmt(n)}
+function shortText(s){s=(s||'').replace(/\s+/g,' ').trim();return s.length>42?s.slice(0,39)+'...':s}
+function dayHead(date){return date===today()?'Today (in progress)':new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})}
+function tipHTML(e,date){
+ const head=dayHead(date);
+ const scored=e.impressions>0&&typeof e.score==='number'&&Number.isFinite(e.score);
+ let delta='';
+ if(scored&&typeof e.score_delta==='number'&&Number.isFinite(e.score_delta)){const d=e.score_delta,cls=d>0?'up':d<0?'down':'sub';delta=`<span class="${cls}" style="margin-left:auto;font-size:12px;white-space:nowrap">${d>0?'+':''}${f1(d)} vs 7-day avg</span>`}
+ const rows=EROWS.map(([k,lab])=>`<div class="rw"><span>${lab}</span><span>${fmt(+e[k]||0)}</span></div>`).join('');
+ const impr=e.impressions?compact(e.impressions):'0';
+ let top='';if(e.top_post&&e.top_post.url)top=`<div class="sub" style="margin-top:4px">Top post: <a href="${esc(e.top_post.url)}" target="_blank" rel="noopener">${esc(shortText(e.top_post.text))}</a></div>`;
+ const note=e.impressions>0?'':'<div class="sub" style="margin-top:6px">No bar: this day has 0 impressions.</div>';
+ return `<div class="lbl">${esc(head)}</div><div class="sc"><b>${scored?f1(e.score):'\u2014'}</b><span class="sub">${scored?'score':'no score'}</span>${delta}</div>${rows}<div class="ft sub">${impr} impressions</div>${top}${note}`}
+function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||(innerWidth<820?30:15);const W=opts.W||800,H=opts.H||220,P=opts.W?28:40,B=opts.bars||null,PR=B?(fs>20?78:46):10;if(!h.length)return '<div class="empty">No snapshots yet.</div>';
  const ys=h.map(s=>s[key]),mn=Math.min(...ys),mx=Math.max(...ys),r=Math.max(mx-mn,4),lo=mn-r*.25,hi=mx+r*.25;
- const PL=(fs>20&&!opts.W)?P*2:P,x=i=>h.length==1?W-10:PL+(W-PL-10)*i/(h.length-1),y=v=>16+(H-36)*(1-(v-lo)/(hi-lo));
+ const basePL=(fs>20&&!opts.W)?P*2:P,labelW=Math.ceil(Math.max(fmt(Math.round(lo)).length,fmt(Math.round(hi)).length)*fs*.62)+12;
+ const PL=B?Math.max(basePL,labelW):basePL;
+ const parseDay=s=>{const p=s.split('-');return new Date(+p[0],p[1]-1,+p[2])};
+ const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+ let nDays=h.length,slot=0,x;
+ if(B){
+  const t0=parseDay(h[0].date),t1=parseDay(h[h.length-1].date);
+  nDays=Math.max(1,Math.round((t1-t0)/86400000)+1);
+  slot=(W-PL-PR)/nDays;
+  x=i=>PL+slot*(Math.round((parseDay(h[i].date)-t0)/86400000)+0.5);
+ }else x=i=>h.length==1?W-PR:PL+(W-PL-PR)*i/(h.length-1);
+ const y=v=>16+(H-36)*(1-(v-lo)/(hi-lo));
  const pts=h.map((s,i)=>`${x(i).toFixed(1)},${y(s[key]).toFixed(1)}`);let g='';
- const st=Math.max(1,Math.ceil((hi-lo)/4));for(let v=Math.max(0,Math.ceil(lo/st)*st);v<=hi;v+=st){const yy=y(v);g+=`<line x1="${PL}" x2="${W}" y1="${yy}" y2="${yy}" stroke="var(--grid)"/><text x="0" y="${yy+4}" fill="var(--mut)" font-size="${fs}">${fmt(v)}</text>`}
+ const xGrid=B?W-PR:W,st=Math.max(1,Math.ceil((hi-lo)/4));for(let v=Math.max(0,Math.ceil(lo/st)*st);v<=hi;v+=st){const yy=y(v);g+=`<line x1="${PL}" x2="${xGrid}" y1="${yy}" y2="${yy}" stroke="var(--grid)"/><text x="${B?PL-8:0}" y="${yy+4}" text-anchor="${B?'end':'start'}" fill="var(--mut)" font-size="${fs}">${fmt(v)}</text>`}
  const line=h.length>1?`<path d="M${pts.join(' L')} L${x(h.length-1)},${H} L${x(0)},${H}Z" fill="url(#gr${key})"/><path d="M${pts.join(' L')}" fill="none" stroke="var(--acc)" stroke-width="2.5"/>`:'';
  const lp=pts[pts.length-1].split(',');
- return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;margin-top:10px"><defs><linearGradient id="gr${key}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--acc)" stop-opacity=".4"/><stop offset="1" stop-color="var(--acc)" stop-opacity="0"/></linearGradient></defs>${g}${line}<circle cx="${lp[0]}" cy="${lp[1]}" r="5" fill="var(--acc)"/></svg>
+ let bars='',ax2='',guide='',halo='',hits='';
+ if(B){const vals=B.filter(v=>v>0);
+  const t0=parseDay(h[0].date),byDate={};
+  h.forEach((s,i)=>{byDate[s.date]={s,v:B[i]}});
+  const gap=Math.min(4,slot*0.15),bw=Math.max(1,slot-gap);
+  if(vals.length){const max=Math.max(...vals),raw=max/4,pow=Math.pow(10,Math.floor(Math.log10(raw))),n=raw/pow,step=(n<=1?1:n<=2?2:n<=5?5:10)*pow;
+   const smax=Math.ceil((max-1e-9)/step)*step||step,yb=v=>(H-20)-(H*.48)*v/smax;
+   for(let i=0;i<nDays;i++){const ds=iso(new Date(t0.getFullYear(),t0.getMonth(),t0.getDate()+i)),row=byDate[ds],v=row?row.v:null;if(!(v>0))continue;
+    const cx=PL+slot*(i+0.5),bh=Math.max(0,H-20-yb(v));
+    bars+=`<rect class="bar" data-date="${ds}" x="${(cx-bw/2).toFixed(1)}" y="${yb(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="var(--bar)" fill-opacity="0.38" pointer-events="none"/>`}
+   const nTicks=Math.round(smax/step);for(let i=0;i<=nTicks;i++){const rv=Math.round(i*step*1e6)/1e6;ax2+=`<text x="${W-2}" y="${(yb(rv)+4).toFixed(1)}" text-anchor="end" fill="var(--bar)" font-size="${fs}" pointer-events="none">${step<1?f1(rv):fmt(Math.round(rv))}</text>`}}
+  guide=`<line class="gline" y1="12" y2="${H-20}" stroke="var(--mut)" stroke-dasharray="3 3" stroke-opacity=".6" visibility="hidden" pointer-events="none"/>`;
+  halo=`<circle class="ghalo" r="4.5" fill="var(--bg)" stroke="var(--acc)" stroke-width="2.5" visibility="hidden" pointer-events="none"/>`;
+  for(let i=0;i<nDays;i++){const ds=iso(new Date(t0.getFullYear(),t0.getMonth(),t0.getDate()+i)),row=byDate[ds],cx=PL+slot*(i+0.5);
+   hits+=`<rect class="hit" data-date="${ds}" data-x="${cx.toFixed(1)}" data-y="${row?y(row.s[key]).toFixed(1):''}" data-snap="${row?1:0}" width="0" height="0"/>`}
+  hits+=`<rect class="plot" x="0" y="0" width="${W}" height="${H}" fill="transparent"/>`}
+ return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;margin-top:10px${B?';cursor:pointer':''}" role="img" aria-label="${B?'Follower growth and daily engagement score':'Chart'}"><defs><linearGradient id="gr${key}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--acc)" stop-opacity=".4"/><stop offset="1" stop-color="var(--acc)" stop-opacity="0"/></linearGradient></defs>${g}${bars}${ax2}${line}<circle cx="${lp[0]}" cy="${lp[1]}" r="5" fill="var(--acc)" pointer-events="none"/>${guide}${halo}${hits}</svg>
  <div class="sub" style="display:flex;justify-content:space-between"><span>${h[0].date}</span><span>${dl(h[h.length-1].date)}</span></div>
  ${h.length<2&&!opts.quiet?'<div class="empty">First snapshot taken '+h[0].date+'. The growth line fills in as daily snapshots run.</div>':''}`}
+function hideTip(){const tip=$('tip');if(tip){tip.hidden=true;tip.dataset.pin='';tip.style.pointerEvents='none'}
+ const svg=$('chart')&&$('chart').querySelector('svg');if(!svg)return;
+ svg.querySelectorAll('.bar').forEach(r=>r.setAttribute('fill-opacity','0.38'));
+ const gl=svg.querySelector('.gline'),gh=svg.querySelector('.ghalo');
+ if(gl)gl.setAttribute('visibility','hidden');if(gh)gh.setAttribute('visibility','hidden')}
+function bindTip(h){const root=$('chart'),svg=root.querySelector('svg');if(!svg)return;
+ const hits=[...svg.querySelectorAll('.hit')];if(!hits.length)return;
+ const byDate={};h.forEach(s=>{byDate[s.date]=s});
+ const tip=document.createElement('div');tip.className='tip';tip.id='tip';tip.hidden=true;tip.style.pointerEvents='none';root.appendChild(tip);
+ const vb=svg.viewBox.baseVal.width||800;
+ const idxFrom=e=>{const r=svg.getBoundingClientRect();if(!r.width)return -1;const x=(e.clientX-r.left)*(vb/r.width);let best=0,bd=1e9;hits.forEach((el,i)=>{const d=Math.abs(+el.dataset.x-x);if(d<bd){bd=d;best=i}});return best};
+ const highlight=(i,haloOn)=>{const date=hits[i].dataset.date;
+  svg.querySelectorAll('.bar').forEach(r=>r.setAttribute('fill-opacity',r.dataset.date===date?'0.95':'0.38'));
+  const el=hits[i],gl=svg.querySelector('.gline'),gh=svg.querySelector('.ghalo');
+  if(gl){gl.setAttribute('x1',el.dataset.x);gl.setAttribute('x2',el.dataset.x);gl.setAttribute('visibility','visible')}
+  if(gh){if(haloOn&&el.dataset.y){gh.setAttribute('cx',el.dataset.x);gh.setAttribute('cy',el.dataset.y);gh.setAttribute('visibility','visible')}else gh.setAttribute('visibility','hidden')}};
+ const place=i=>{const sr=svg.getBoundingClientRect(),rr=root.getBoundingClientRect(),vbw=svg.viewBox.baseVal.width||vb;
+  const scale=sr.width/vbw,bx=sr.left-rr.left+(+hits[i].dataset.x)*scale;
+  const grid=svg.querySelector('line'),plotLeft=grid?(+grid.getAttribute('x1'))*scale:0;
+  const minL=Math.max(4,plotLeft+6),maxL=Math.max(minL,root.clientWidth-tip.offsetWidth-4);
+  let left=bx-tip.offsetWidth-14;
+  if(left<minL)left=bx+16;
+  if(left>maxL)left=maxL;
+  if(left<minL)left=minL;
+  tip.style.left=left+'px';tip.style.top='16px'};
+ const show=(i,pin)=>{if(i<0){hideTip();return}
+  const date=hits[i].dataset.date,row=byDate[date];
+  if(!row||!row.engagement){tip.innerHTML=`<div class="lbl">${esc(dayHead(date))}</div><div class="sub" style="margin-top:6px">No snapshot</div>`}
+  else tip.innerHTML=tipHTML(row.engagement,date);
+  tip.hidden=false;if(pin)tip.dataset.pin='1';
+  tip.style.pointerEvents=tip.dataset.pin==='1'?'auto':'none';highlight(i,!!(row&&row.engagement));place(i)};
+ svg.addEventListener('pointermove',e=>{if(e.pointerType==='touch'||tip.dataset.pin==='1')return;show(idxFrom(e),false)});
+ svg.addEventListener('pointerdown',e=>{show(idxFrom(e),true)});
+ svg.addEventListener('pointerleave',e=>{if(tip.dataset.pin==='1')return;if(e.relatedTarget&&tip.contains(e.relatedTarget))return;hideTip()});
+ tip.addEventListener('pointerleave',e=>{if(tip.dataset.pin==='1')return;if(e.relatedTarget&&svg.contains(e.relatedTarget))return;hideTip()})}
+document.addEventListener('pointerdown',e=>{const ch=$('chart');if(ch&&ch.contains(e.target))return;hideTip()});
 function render(){const a=D.accounts[cur];if(!a){$('fc').textContent='No data';return}
  $('sw').innerHTML=HANDLES.map(h=>`<option value="${h}"${h==cur?' selected':''}>@${h}</option>`).join('');
  $('sw').onchange=e=>{cur=e.target.value;localStorage.setItem('acct',cur);render()};
  const h=a.history,last=h[h.length-1];$('fc').textContent=fmt(last.followers);$('fg').textContent=fmt(last.following);$('pc').textContent=fmt(last.posts);
  $('delta').innerHTML=sign(dlt(h,30))+' <span class="sub">last 30 days</span>';$('d7').innerHTML=sign(dlt(h,7));$('snap').textContent='Last snapshot: '+dl(last.date);
- $('chart').innerHTML=chart(h);
+ const hasEng=h.some(s=>s.engagement);
+ $('chart').innerHTML=chart(h,'followers',{H:hasEng?380:220,bars:hasEng?h.map(s=>{const e=s.engagement;return e&&typeof e.score==='number'&&e.score>0?e.score:null}):null});
+ if(hasEng)bindTip(h);
  $('ctc').style.display=(D.clickthroughs||[]).length?'':'none';const c=D.clickthroughs||[];
  $('ct').innerHTML=c.length?`<div class="big">${fmt(c.reduce((s,r)=>s+r.visits,0))}</div><div class="sub">visits from x.com and t.co, ${c[0].date} to ${c[c.length-1].date}</div>`
  :'';
@@ -94,7 +188,7 @@ function render(){const a=D.accounts[cur];if(!a){$('fc').textContent='No data';r
  $('rows').innerHTML=(a.posts||[]).filter(p=>inc||!p.is_reply).map(p=>{return `<tr class="pr" data-id="${p.id}"><td><a href="#post/${p.id}">${esc(p.text.length>120?p.text.slice(0,117)+'...':p.text)}</a><div class="d">${new Date(p.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div></td>
  <td class="n" data-l="Impr">${fmt(p.impressions)}</td><td class="n" data-l="Likes">${fmt(p.likes)}</td><td class="n" data-l="Replies">${fmt(p.replies)}</td><td class="n" data-l="Reposts">${fmt(p.reposts)}</td></tr>`}).join('')||'<tr><td><div class="empty" style="text-align:center">No posts in the last 30 days</div></td></tr>'}
 document.addEventListener('click',e=>{const tr=e.target.closest('tr.pr');if(tr&&!e.target.closest('a')){location.hash='post/'+tr.dataset.id}});
-$('ov').onclick=e=>{if(e.target.id==='ov')closeP()};addEventListener('keydown',e=>{if(e.key==='Escape')closeP()});
+$('ov').onclick=e=>{if(e.target.id==='ov')closeP()};addEventListener('keydown',e=>{if(e.key==='Escape'){hideTip();closeP()}});
 function closeP(){if(location.hash.startsWith('#post/'))history.pushState('',document.title,location.pathname+location.search);$('ov').classList.remove('open')}
 async function openP(id){const r=await fetch('/api/post/'+id);if(!r.ok){$('pn').innerHTML='<button class="x" onclick="closeP()" aria-label="Close">\u00d7</button><div class="empty">Post not found.</div>';$('ov').classList.add('open');return}
  const p=await r.json(),h=p.history,last=h[h.length-1],prev=h.length>1?h[h.length-2]:null;

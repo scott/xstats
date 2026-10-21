@@ -8,7 +8,7 @@ A small, self-hosted X (Twitter) stats dashboard. Track follower growth and per-
 
 - Account switcher for any number of accounts
 - Current follower count with 7 and 30 day deltas
-- Follower growth chart built from daily snapshots
+- Follower growth chart built from daily snapshots, with a daily engagement-score bar
 - Recent posts table (last 30 days), retweets excluded, replies hidden behind a toggle
 - Per-post drill-in with impressions, likes, replies and reposts over time
 - Light and dark themes (follows the system, remembers your choice), responsive down to phone width
@@ -37,7 +37,7 @@ A small, self-hosted X (Twitter) stats dashboard. Track follower growth and per-
 - **One binary.** `xstats` embeds the static frontend with `go:embed` and uses `modernc.org/sqlite`, so it builds with `CGO_ENABLED=0` and has no runtime dependencies.
 - **SQLite.** Tables: `accounts`, `follower_snapshots` (one row per account per day), `post_metrics` (one row per post per day), `clickthroughs` (one row per day). Re-ingesting a day upserts, so it is always safe to rerun.
 - **Ingest API.** `POST /api/ingest` with `Authorization: Bearer <token>` accepts a snapshot bundle. The token comes from `XSTATS_INGEST_TOKEN`; if it is unset, ingest is disabled.
-- **Read API.** `GET /api/data` (all accounts, history, recent posts) and `GET /api/post/<id>` (daily history for one post).
+- **Read API.** `GET /api/data` (accounts, follower history, daily engagement, recent posts) and `GET /api/post/<id>` (daily history for one post).
 - **Caddy** terminates TLS with automatic certificates and puts basic auth in front of everything except `/api/ingest`.
 
 xstats does not call the X API itself. Collect data with whatever client you like and hand it the raw JSON.
@@ -96,6 +96,26 @@ One JSON file per day. The `user` and `posts` objects are the X API v2 responses
 - Posts starting with `RT @` are skipped. Posts starting with `@` or with `in_reply_to_user_id` are flagged as replies.
 - Reposts shown in the UI are `retweet_count + quote_count`.
 
+## Engagement score
+
+Each follower-history day on `GET /api/data` includes an `engagement` object. Existing history fields are unchanged. The response also includes the weights once:
+
+```json
+"engagement_weights": {"comments": 3, "new_followers": 4, "reshares": 2, "likes": 1}
+```
+
+```
+score = (3×comments + 4×new_followers + 2×reshares + 1×likes) / (impressions/1000)
+```
+
+- **comments** are `reply_count`. **likes** are `like_count`. **reshares** are `retweet_count + quote_count`, the value already stored in `post_metrics.reposts`.
+- Posts are summed on the calendar day of `created_at` in `XSTATS_TZ` (default `America/Denver`), the day the hourly ingest closes. A post at 23:30 Mountain Time is 05:30 UTC the next morning and still counts on the Mountain Time day. A bare `YYYY-MM-DD` is that calendar day and is not shifted. The recent-posts list is still the last 30 UTC days. Each post is counted once, from its latest snapshot, so re-pushing a day replaces that snapshot instead of double-counting. The chart runs from the first follower snapshot through the last, one bar slot per calendar day, centered on that day's follower point. A day with no snapshot or a null score keeps the slot and draws no bar.
+- **new_followers** is the change from the previous follower snapshot. The first snapshot has no prior day, so new followers are 0.
+- When a day's impressions are 0, `score` is null and the chart draws no bar. The hover card says so.
+- `in_progress` is true when that snapshot date is today in `XSTATS_TZ`, because the day can still be re-pushed. The page labels the browser's local today as "Today (in progress)", same as the follower line.
+- `score_delta` is this score minus the average score of earlier snapshot days in the previous 7 calendar days. Days with no score are left out of the average.
+- `top_post` is the post created that day with the most post-level points (`3×replies + 2×reshares + 1×likes`). Ties prefer more impressions, then the lower post id. The link is `https://x.com/<handle>/status/<id>`.
+
 Suggested X API v2 calls per day (3 reads for two accounts):
 
 - `GET /2/users/by?usernames=a,b&user.fields=public_metrics,profile_image_url,name`
@@ -138,6 +158,7 @@ Put these in `~/.config/xstats/deploy.env` (mode 0600, see `.env.deploy.example`
 | `SSH_KEY` | `~/.ssh/id_ed25519` | SSH private key path |
 | `XSTATS_TOKEN_FILE` | `~/.config/xstats/ingest_token` | Ingest token file |
 | `XSTATS_ACCOUNTS` | unset | Optional tab order, e.g. `alice,bob`; first is the default |
+| `XSTATS_TZ` | `America/Denver` | Zone for engagement day buckets and `in_progress`. Zone data is embedded, so a host without tz files still resolves the default |
 | `STATS_URL` | required for push | Base URL used by `snapshot/push.sh` |
 
 `deploy.sh` installs Caddy from its official apt repo, creates an `xstats` system user, installs the binary to `/usr/local/bin`, the unit from `deploy/xstats.service`, and the token in `/etc/xstats/env` (mode 0640). The password is sent over SSH stdin and hashed on the server with `caddy hash-password`; only the bcrypt hash is stored. The script is idempotent.
