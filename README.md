@@ -27,6 +27,7 @@ A small, self-hosted X (Twitter) stats dashboard. Track follower growth and per-
  (any X API client)     HTTPS    +-------------------------------+
   raw JSON bundle  ------------> | Caddy (TLS, basic auth)       |
   POST /api/ingest   Bearer      |   /api/ingest: token only     |
+                                 |   favicons: public            |
                                  |   everything else: basic auth |
                                  |            |                  |
                                  |   xstats serve (127.0.0.1)    |
@@ -40,7 +41,7 @@ A small, self-hosted X (Twitter) stats dashboard. Track follower growth and per-
 - **SQLite.** Tables: `accounts`, `follower_snapshots` (one row per account per day), `post_metrics` (one row per post per day), `clickthroughs` (one row per day). Re-ingesting a day upserts, so it is always safe to rerun.
 - **Ingest API.** `POST /api/ingest` with `Authorization: Bearer <token>` accepts a snapshot bundle. The token comes from `XSTATS_INGEST_TOKEN`; if it is unset, ingest is disabled.
 - **Read API.** `GET /api/data` (accounts, follower history, daily engagement, recent posts) and `GET /api/post/<id>` (daily history for one post).
-- **Caddy** terminates TLS with automatic certificates and puts basic auth in front of everything except `/api/ingest`.
+- **Caddy** terminates TLS with automatic certificates and puts basic auth in front of the dashboard. `/api/ingest` is open to the bearer token. Favicon paths and `site.webmanifest` are open too: they are static files with no account data, and browsers request them without the dashboard credentials.
 
 xstats does not call the X API itself. Collect data with whatever client you like and hand it the raw JSON.
 
@@ -52,6 +53,28 @@ Requires Go 1.23+.
 go test ./...
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/xstats ./cmd/xstats
 ```
+
+## Favicon
+
+The mark is a growth chart on a `#07090d` tile: bars `#a371f7`, line and dot `#1d9bf0` (the `--bar` and `--acc` values in `cmd/xstats/web/index.html`). The outline is `#3d4a5c`, lighter than the page border `#1f2733`, so the tile still shows up on a dark browser tab and still reads on a light one.
+
+`scripts/favicon/mark.svg` is the 64px drawing used for the 32, 48, 192, and 512 PNGs and for the Apple touch icon. Shrinking that drawing to 16px turns the 2px stroke into a half pixel and softens the bars, so `scripts/favicon/mark-16.svg` is a separate 16px drawing: a 1px outline, a 2px line, and pixel-aligned bars. `favicon.svg` and `favicon-16.png` use that drawing. The Apple touch icon is a full-bleed tile, because iOS rounds the square itself.
+
+Rebuild the rasters with `rsvg-convert` (package `librsvg2-bin`):
+
+```
+scripts/render-favicons.py
+```
+
+`favicon.ico` contains the 16, 32, and 48 PNGs. `site.webmanifest` lists the 192 and 512 icons and sets `theme_color` to `#07090d`.
+
+![Favicon at 16px and 32px, on a dark tab bar and on white. The bottom row compares outline #1f2733 with #3d4a5c.](docs/favicon-sizes.png)
+
+Browser tab on fake demo data (`example_one`), before the icon and after:
+
+![Tab before the favicon](docs/favicon-tab-before.png)
+
+![Tab with the growth-chart favicon](docs/favicon-tab.png)
 
 ## Run locally
 
