@@ -2,7 +2,12 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
+	"os"
+	"strings"
 	"time"
+
+	_ "time/tzdata" // America/Denver on a host image that has no zoneinfo files
 )
 
 // Engagement weights. comments are reply_count, reshares are the reposts
@@ -63,22 +68,45 @@ type dayEngagement struct {
 	Top                                     *scoredPost
 }
 
-// utcDay is the UTC calendar day of a post's created_at. That is the same
-// clock as the 30-day posts window (UTC). Snapshot dates are the ingest
-// bundle's YYYY-MM-DD; they line up when the bundle date is that UTC day,
-// which is how scripts/seed.py and the README example are written.
-func utcDay(createdAt string) (string, bool) {
-	s := createdAt
-	if s == "" {
+// statsLocation is the calendar used for engagement days and for "today".
+// XSTATS_TZ overrides it; the default is America/Denver, which is the day
+// the hourly ingest closes. Read on each call so a change is not cached.
+func statsLocation() (*time.Location, error) {
+	name := strings.TrimSpace(os.Getenv("XSTATS_TZ"))
+	if name == "" {
+		name = "America/Denver"
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return nil, fmt.Errorf("XSTATS_TZ %q: %w", name, err)
+	}
+	return loc, nil
+}
+
+// postDay is the calendar day of created_at in loc.
+// A bare YYYY-MM-DD is that day; shifting it would move UTC midnight into
+// the previous evening. A full timestamp is converted into loc, so 23:30
+// Mountain Time (05:30 UTC the next day) stays on the Mountain Time day.
+func postDay(createdAt string, loc *time.Location) (string, bool) {
+	s := strings.TrimSpace(createdAt)
+	if s == "" || loc == nil {
 		return "", false
 	}
-	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
+	if len(s) == 10 {
+		if _, err := time.Parse("2006-01-02", s); err == nil {
+			return s, true
+		}
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
 		if t, err := time.Parse(layout, s); err == nil {
-			return t.UTC().Format("2006-01-02"), true
+			return t.In(loc).Format("2006-01-02"), true
 		}
 	}
 	if len(s) >= 10 {
 		if _, err := time.Parse("2006-01-02", s[:10]); err == nil {
+			if len(s) > 10 && (s[10] == 'T' || s[10] == 't') {
+				return "", false
+			}
 			return s[:10], true
 		}
 	}
@@ -105,13 +133,14 @@ func (b *dayBucket) add(p scoredPost) {
 }
 
 // aggregateDays buckets latest-per-post metrics onto follower snapshot days.
-// Posts whose UTC creation day is not a snapshot day are left out (the chart
-// x-axis is the snapshot series). A post is counted once, from its latest
-// snapshot, so re-pushing a day replaces numbers instead of adding them.
-func aggregateDays(hist []histDay, posts []scoredPost, today string) []dayEngagement {
+// created_at is interpreted in loc (see postDay). A post whose day is not a
+// snapshot day is left out. A post is counted once, from its latest snapshot,
+// so re-pushing a day replaces numbers instead of adding them.
+// today is the calendar day in that same zone; it sets InProgress.
+func aggregateDays(hist []histDay, posts []scoredPost, today string, loc *time.Location) []dayEngagement {
 	byDay := map[string]*dayBucket{}
 	for _, p := range posts {
-		day, ok := utcDay(p.CreatedAt)
+		day, ok := postDay(p.CreatedAt, loc)
 		if !ok {
 			continue
 		}

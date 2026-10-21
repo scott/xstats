@@ -139,7 +139,11 @@ func apiData(db *sql.DB) (any, error) {
 		"generated":          time.Now().Format(time.RFC3339),
 		"engagement_weights": engagementWeights(),
 	}
-	today := time.Now().Format("2006-01-02")
+	loc, err := statsLocation()
+	if err != nil {
+		return nil, err
+	}
+	today := time.Now().In(loc).Format("2006-01-02")
 	accts := map[string]any{}
 	rows, err := db.Query(`SELECT handle,name,avatar FROM accounts`)
 	if err != nil {
@@ -172,7 +176,7 @@ func apiData(db *sql.DB) (any, error) {
 			for i, row := range hist {
 				snaps[i] = histDay{Date: row["date"].(string), Followers: row["followers"].(int)}
 			}
-			for i, e := range aggregateDays(snaps, postsForScore, today) {
+			for i, e := range aggregateDays(snaps, postsForScore, today, loc) {
 				hist[i]["engagement"] = engagementJSON(a.h, e)
 			}
 		}
@@ -306,6 +310,9 @@ func main() {
 	dbp := fsFlags.String("db", "xstats.db", "SQLite path")
 	addr := fsFlags.String("addr", "127.0.0.1:8080", "listen address")
 	fsFlags.Parse(os.Args[2:])
+	if _, err := statsLocation(); err != nil {
+		log.Fatal(err)
+	}
 	db := openDB(*dbp)
 	switch os.Args[1] {
 	case "ingest":

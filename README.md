@@ -109,10 +109,10 @@ score = (3×comments + 4×new_followers + 2×reshares + 1×likes) / (impressions
 ```
 
 - **comments** are `reply_count`. **likes** are `like_count`. **reshares** are `retweet_count + quote_count`, the value already stored in `post_metrics.reposts`.
-- Posts are summed on the UTC calendar day of `created_at`, the same clock as the 30-day posts window. Each post is counted once, from its latest snapshot, so re-pushing a day replaces that snapshot instead of double-counting. The chart's x-axis is still the follower snapshot dates; a post whose UTC day has no snapshot is not drawn.
+- Posts are summed on the calendar day of `created_at` in `XSTATS_TZ` (default `America/Denver`), the day the hourly ingest closes. A post at 23:30 Mountain Time is 05:30 UTC the next morning and still counts on the Mountain Time day. A bare `YYYY-MM-DD` is that calendar day and is not shifted. The recent-posts list is still the last 30 UTC days. Each post is counted once, from its latest snapshot, so re-pushing a day replaces that snapshot instead of double-counting. The chart runs from the first follower snapshot through the last, one bar slot per calendar day, centered on that day's follower point. A day with no snapshot or a null score keeps the slot and draws no bar.
 - **new_followers** is the change from the previous follower snapshot. The first snapshot has no prior day, so new followers are 0.
 - When a day's impressions are 0, `score` is null and the chart draws no bar. The hover card says so.
-- `in_progress` is true when that snapshot date is the server's local today, because the day can still be re-pushed. The page labels the browser's local today as "Today (in progress)", same as the follower line.
+- `in_progress` is true when that snapshot date is today in `XSTATS_TZ`, because the day can still be re-pushed. The page labels the browser's local today as "Today (in progress)", same as the follower line.
 - `score_delta` is this score minus the average score of earlier snapshot days in the previous 7 calendar days. Days with no score are left out of the average.
 - `top_post` is the post created that day with the most post-level points (`3×replies + 2×reshares + 1×likes`). Ties prefer more impressions, then the lower post id. The link is `https://x.com/<handle>/status/<id>`.
 
@@ -158,6 +158,7 @@ Put these in `~/.config/xstats/deploy.env` (mode 0600, see `.env.deploy.example`
 | `SSH_KEY` | `~/.ssh/id_ed25519` | SSH private key path |
 | `XSTATS_TOKEN_FILE` | `~/.config/xstats/ingest_token` | Ingest token file |
 | `XSTATS_ACCOUNTS` | unset | Optional tab order, e.g. `alice,bob`; first is the default |
+| `XSTATS_TZ` | `America/Denver` | Zone for engagement day buckets and `in_progress`. Zone data is embedded, so a host without tz files still resolves the default |
 | `STATS_URL` | required for push | Base URL used by `snapshot/push.sh` |
 
 `deploy.sh` installs Caddy from its official apt repo, creates an `xstats` system user, installs the binary to `/usr/local/bin`, the unit from `deploy/xstats.service`, and the token in `/etc/xstats/env` (mode 0640). The password is sent over SSH stdin and hashed on the server with `caddy hash-password`; only the bcrypt hash is stored. The script is idempotent.

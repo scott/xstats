@@ -104,20 +104,84 @@ func TestBadIDAndIngestAuth(t *testing.T) {
 	}
 }
 
-func TestUTCDay(t *testing.T) {
-	d, ok := utcDay("2026-10-14T12:00:00.000Z")
+func denver(t *testing.T) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation("America/Denver")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loc
+}
+
+func TestPostDay(t *testing.T) {
+	loc := denver(t)
+	d, ok := postDay("2026-10-14T12:00:00.000Z", loc)
 	if !ok || d != "2026-10-14" {
 		t.Fatalf("fractional Z: %q %v", d, ok)
 	}
-	d, ok = utcDay("2026-09-03T20:00:00-07:00") // 03:00Z next day
-	if !ok || d != "2026-09-04" {
+	// 20:00 at UTC-7 is 21:00 MDT the same calendar day, not the next UTC day.
+	d, ok = postDay("2026-09-03T20:00:00-07:00", loc)
+	if !ok || d != "2026-09-03" {
 		t.Fatalf("offset: %q", d)
 	}
-	if _, ok = utcDay(""); ok {
+	// 23:30 Mountain Time is 05:30 UTC the next morning, and stays on the MT day.
+	d, ok = postDay("2026-10-15T05:30:00Z", loc)
+	if !ok || d != "2026-10-14" {
+		t.Fatalf("23:30 MT via Z: %q", d)
+	}
+	d, ok = postDay("2026-10-14T23:30:00-06:00", loc)
+	if !ok || d != "2026-10-14" {
+		t.Fatalf("23:30 MT offset: %q", d)
+	}
+	// A date with no clock is that calendar day. UTC midnight would be the
+	// previous evening in Denver, and must not be shifted.
+	d, ok = postDay("2026-10-15", loc)
+	if !ok || d != "2026-10-15" {
+		t.Fatalf("date-only: %q", d)
+	}
+	if _, ok = postDay("", loc); ok {
 		t.Fatal("empty created_at should not bucket")
 	}
-	if _, ok = utcDay("not-a-date"); ok {
+	if _, ok = postDay("not-a-date", loc); ok {
 		t.Fatal("garbage created_at should not bucket")
+	}
+}
+
+func TestStatsLocation(t *testing.T) {
+	t.Setenv("XSTATS_TZ", "")
+	loc, err := statsLocation()
+	if err != nil || loc.String() != "America/Denver" {
+		t.Fatalf("default: %v %v", loc, err)
+	}
+	t.Setenv("XSTATS_TZ", "UTC")
+	loc, err = statsLocation()
+	if err != nil || loc.String() != "UTC" {
+		t.Fatalf("override: %v %v", loc, err)
+	}
+	d, ok := postDay("2026-10-15T05:30:00Z", loc)
+	if !ok || d != "2026-10-15" {
+		t.Fatalf("utc bucket %q", d)
+	}
+	t.Setenv("XSTATS_TZ", "America/Denver")
+	loc, err = statsLocation()
+	if err != nil || loc.String() != "America/Denver" {
+		t.Fatalf("denver after utc: %v %v", loc, err)
+	}
+	d, ok = postDay("2026-10-15T05:30:00Z", loc)
+	if !ok || d != "2026-10-14" {
+		t.Fatalf("cached zone? %q", d)
+	}
+	t.Setenv("XSTATS_TZ", "Not/AZone")
+	if _, err := statsLocation(); err == nil {
+		t.Fatal("invalid zone should fail")
+	}
+}
+
+func TestBadZoneFailsAPI(t *testing.T) {
+	t.Setenv("XSTATS_TZ", "Not/AZone")
+	mux, _ := testDB(t)
+	if get(mux, "/api/data").Code != 500 {
+		t.Fatal("invalid XSTATS_TZ should fail /api/data")
 	}
 }
 
@@ -135,13 +199,14 @@ func TestAggregateDays(t *testing.T) {
 		// Zero impressions: score stays nil (no divide by zero) even with a follower drop.
 		{ID: "p2", Text: "quiet", CreatedAt: "2026-09-02T12:00:00Z", Impressions: 0, Likes: 4, Replies: 1},
 		{ID: "p3", Text: "scored", CreatedAt: "2026-09-03T12:00:00Z", Impressions: 1000, Likes: 10},
-		// 20:00-07:00 is the next UTC day, so this lands on 09-04, not 09-03.
-		{ID: "p4", Text: "offset", CreatedAt: "2026-09-03T20:00:00-07:00", Impressions: 1000, Likes: 5},
+		// 05:30Z on Sep 5 is 23:30 MT on Sep 4, so this stays on the Sep 4 snapshot.
+		{ID: "p4", Text: "offset", CreatedAt: "2026-09-05T05:30:00Z", Impressions: 1000, Likes: 5},
 		{ID: "skip", Text: "bad", CreatedAt: "", Impressions: 99999, Likes: 99999},
 		{ID: "old", Text: "unaligned", CreatedAt: "2026-08-01T12:00:00Z", Impressions: 99999, Likes: 99999},
 		{ID: "p5", Text: "latest", CreatedAt: "2026-09-10T12:00:00Z", Impressions: 1000, Likes: 16},
 	}
-	got := aggregateDays(hist, posts, "2026-09-10")
+	loc := denver(t)
+	got := aggregateDays(hist, posts, "2026-09-10", loc)
 	if len(got) != len(hist) {
 		t.Fatalf("len %d", len(got))
 	}
@@ -175,7 +240,7 @@ func TestAggregateDays(t *testing.T) {
 		t.Fatalf("delta %v", scoreOr(last.ScoreDelta))
 	}
 	if got[2].InProgress || got[3].Date != "2026-09-04" || got[3].Likes != 5 || got[3].Impressions != 1000 {
-		t.Fatalf("utc bucket: %+v %+v", got[2], got[3])
+		t.Fatalf("zone bucket: %+v %+v", got[2], got[3])
 	}
 	if got[2].Score == nil || *got[2].Score != 10 || got[3].Score == nil || *got[3].Score != 5 {
 		t.Fatal("window inputs")
@@ -188,17 +253,18 @@ func TestAggregateDays(t *testing.T) {
 
 func TestTopPostTieBreak(t *testing.T) {
 	hist := []histDay{{Date: "2026-10-01", Followers: 5}}
+	loc := denver(t)
 	higherImp := aggregateDays(hist, []scoredPost{
-		{ID: "1", Text: "low", CreatedAt: "2026-10-01T00:00:00Z", Impressions: 100, Likes: 10},
-		{ID: "2", Text: "high", CreatedAt: "2026-10-01T00:00:00Z", Impressions: 200, Likes: 10},
-	}, "2026-01-01")
+		{ID: "1", Text: "low", CreatedAt: "2026-10-01T18:00:00Z", Impressions: 100, Likes: 10},
+		{ID: "2", Text: "high", CreatedAt: "2026-10-01T18:00:00Z", Impressions: 200, Likes: 10},
+	}, "2026-01-01", loc)
 	if higherImp[0].Top == nil || higherImp[0].Top.ID != "2" || higherImp[0].Top.Points != 10 {
 		t.Fatalf("impressions tie-break: %+v", higherImp[0].Top)
 	}
 	lowerID := aggregateDays(hist, []scoredPost{
-		{ID: "200", Text: "b", CreatedAt: "2026-10-01T00:00:00Z", Impressions: 100, Likes: 10},
-		{ID: "100", Text: "a", CreatedAt: "2026-10-01T00:00:00Z", Impressions: 100, Likes: 10},
-	}, "2026-01-01")
+		{ID: "200", Text: "b", CreatedAt: "2026-10-01T18:00:00Z", Impressions: 100, Likes: 10},
+		{ID: "100", Text: "a", CreatedAt: "2026-10-01T18:00:00Z", Impressions: 100, Likes: 10},
+	}, "2026-01-01", loc)
 	if lowerID[0].Top == nil || lowerID[0].Top.ID != "100" {
 		t.Fatalf("id tie-break: %+v", lowerID[0].Top)
 	}
@@ -206,8 +272,8 @@ func TestTopPostTieBreak(t *testing.T) {
 
 func TestNegativeScore(t *testing.T) {
 	hist := []histDay{{Date: "2026-10-01", Followers: 100}, {Date: "2026-10-02", Followers: 90}}
-	posts := []scoredPost{{ID: "1", CreatedAt: "2026-10-02T00:00:00Z", Impressions: 1000}}
-	got := aggregateDays(hist, posts, "2026-01-01")
+	posts := []scoredPost{{ID: "1", CreatedAt: "2026-10-02T18:00:00Z", Impressions: 1000}}
+	got := aggregateDays(hist, posts, "2026-01-01", denver(t))
 	wantPts := dayLevelPoints(0, -10, 0, 0)
 	if got[1].NewFollowers != -10 || got[1].Points != wantPts || got[1].Score == nil || *got[1].Score != float64(wantPts) {
 		t.Fatalf("negative: %+v score %v", got[1], scoreOr(got[1].Score))
@@ -270,9 +336,14 @@ func asF(t *testing.T, v any) (float64, bool) {
 // today's in-progress re-push.
 func TestEngagementIngest(t *testing.T) {
 	mux, ing := testDB(t)
-	d0 := time.Now().AddDate(0, 0, -2).Format("2006-01-02")
-	d1 := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
-	d2 := time.Now().Format("2006-01-02")
+	loc, err := statsLocation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().In(loc)
+	d0 := now.AddDate(0, 0, -2).Format("2006-01-02")
+	d1 := now.AddDate(0, 0, -1).Format("2006-01-02")
+	d2 := now.Format("2006-01-02")
 	user := func(followers, following, tweets int) string {
 		return `{"id":"1","username":"demo","name":"Demo","public_metrics":{"followers_count":` +
 			itoaN(followers) + `,"following_count":` + itoaN(following) + `,"tweet_count":` + itoaN(tweets) + `}}`
@@ -413,12 +484,35 @@ func itoaN(n int) string {
 func TestPageMarksEngagement(t *testing.T) {
 	mux, _ := testDB(t)
 	body := get(mux, "/").Body.String()
-	for _, s := range []string{"Engagement score", "--bar:#a371f7", "--bar:#8250df", "No bar: this day has 0 impressions."} {
+	for _, s := range []string{"Engagement score", "--bar:#a371f7", "--bar:#8250df", "No bar: this day has 0 impressions.", "No snapshot", "grid-template-columns:1fr auto"} {
 		if !strings.Contains(body, s) {
 			t.Fatalf("page missing %q", s)
 		}
 	}
 	if strings.Contains(body, "Example data") || strings.Contains(body, "EXAMPLE DATA") {
 		t.Fatal("example-data label must not ship")
+	}
+	if strings.Contains(body, "1fr auto auto") || strings.Contains(body, "wt*n") || strings.Contains(body, "\\u00d7${") {
+		t.Fatal("hover card still shows the per-category formula")
+	}
+}
+
+// 05:30 UTC is still the previous Mountain Time evening. That post belongs on
+// today's Denver snapshot, and the next UTC date is not in progress.
+func TestEveningMountainTime(t *testing.T) {
+	loc := denver(t)
+	instant := time.Date(2026, 10, 15, 5, 30, 0, 0, time.UTC)
+	today := instant.In(loc).Format("2006-01-02")
+	if today != "2026-10-14" {
+		t.Fatalf("denver day of 05:30Z %s", today)
+	}
+	hist := []histDay{{Date: "2026-10-14", Followers: 10}, {Date: "2026-10-15", Followers: 12}}
+	posts := []scoredPost{{ID: "eve", Text: "late", CreatedAt: "2026-10-15T05:30:00Z", Impressions: 1000, Likes: 3}}
+	got := aggregateDays(hist, posts, today, loc)
+	if !got[0].InProgress || got[0].Likes != 3 || got[0].Score == nil || *got[0].Score != 3 {
+		t.Fatalf("evening post %+v score %v", got[0], scoreOr(got[0].Score))
+	}
+	if got[1].InProgress || got[1].Likes != 0 || got[1].Impressions != 0 || got[1].Score != nil {
+		t.Fatalf("next utc day %+v", got[1])
 	}
 }

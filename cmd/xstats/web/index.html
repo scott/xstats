@@ -49,11 +49,11 @@ tr.pr{cursor:pointer}tr.pr:hover td{background:color-mix(in srgb,var(--acc) 6%,t
 .lg i{display:inline-block;vertical-align:middle;margin-right:6px}
 .lg .ln{width:16px;height:3px;border-radius:2px;background:var(--acc)}
 .lg .br{width:9px;height:12px;border-radius:2px;background:var(--bar);opacity:.7}
-.tip{position:absolute;z-index:5;width:262px;max-width:calc(100% - 8px);background:var(--sw);border:1px solid var(--bd);border-radius:10px;padding:12px 14px;font-size:13px;box-shadow:0 10px 30px #0007;font-variant-numeric:tabular-nums}
+.tip{position:absolute;z-index:5;width:240px;max-width:calc(100% - 8px);background:var(--sw);border:1px solid var(--bd);border-radius:10px;padding:12px 14px;font-size:13px;box-shadow:0 10px 30px #0007;font-variant-numeric:tabular-nums}
 [data-theme=light] .tip{box-shadow:0 10px 30px #0f141926}
 .tip .sc{display:flex;align-items:baseline;gap:8px;margin:4px 0 10px}.tip .sc b{font-size:24px;color:var(--bar)}
-.tip .rw{display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:5px 0;border-top:1px solid var(--row)}
-.tip .rw span:nth-child(2){font-weight:600;text-align:right}.tip .rw span:nth-child(3){color:var(--mut);text-align:right;min-width:74px;white-space:nowrap}
+.tip .rw{display:grid;grid-template-columns:1fr auto;gap:8px;padding:5px 0;border-top:1px solid var(--row)}
+.tip .rw span:nth-child(2){font-weight:600;text-align:right}
 .tip .ft{border-top:1px solid var(--bd);margin-top:4px;padding-top:8px}
 .tip a{color:var(--acc);text-decoration:none;pointer-events:auto}.tip a:hover{text-decoration:underline}
 </style></head><body><div class="wrap">
@@ -85,39 +85,54 @@ function dlt(h,days){if(h.length<2)return null;const last=h[h.length-1],cut=new 
  let base=h[0];for(const s of h)if(new Date(s.date)<=cut)base=s;return last.followers-base.followers}
 function sign(v){return v==null?'<span class="sub">n/a</span>':`<span class="${v<0?'down':'up'}">${v>0?'+':''}${fmt(v)}</span>`}
 const EROWS=[['comments','Comments'],['new_followers','New followers'],['reshares','Reshares'],['likes','Likes']];
-function weights(){return (D&&D.engagement_weights)||{comments:3,new_followers:4,reshares:2,likes:1}}
 function f1(n){const v=Math.round(n*10)/10;return (v===0?0:v).toFixed(1)}
 function trim1(n){const s=f1(n);return s.endsWith('.0')?s.slice(0,-2):s}
 function compact(n){const a=Math.abs(n),sign=n<0?'-':'';if(a>=1e6)return sign+trim1(a/1e6)+'m';if(a>=1000)return sign+trim1(a/1000)+'k';return fmt(n)}
 function shortText(s){s=(s||'').replace(/\s+/g,' ').trim();return s.length>42?s.slice(0,39)+'...':s}
-function tipHTML(e,date){const w=weights();
- const head=date===today()?'Today (in progress)':new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+function dayHead(date){return date===today()?'Today (in progress)':new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})}
+function tipHTML(e,date){
+ const head=dayHead(date);
  const scored=e.impressions>0&&typeof e.score==='number'&&Number.isFinite(e.score);
  let delta='';
  if(scored&&typeof e.score_delta==='number'&&Number.isFinite(e.score_delta)){const d=e.score_delta,cls=d>0?'up':d<0?'down':'sub';delta=`<span class="${cls}" style="margin-left:auto;font-size:12px;white-space:nowrap">${d>0?'+':''}${f1(d)} vs 7-day avg</span>`}
- const rows=EROWS.map(([k,lab])=>{const n=+e[k]||0,wt=+w[k]||0;return `<div class="rw"><span>${lab}</span><span>${fmt(n)}</span><span>\u00d7${wt} = ${fmt(wt*n)}</span></div>`}).join('');
- const pt=Math.abs(e.points)===1?'point':'points',impr=e.impressions?compact(e.impressions):'0';
+ const rows=EROWS.map(([k,lab])=>`<div class="rw"><span>${lab}</span><span>${fmt(+e[k]||0)}</span></div>`).join('');
+ const impr=e.impressions?compact(e.impressions):'0';
  let top='';if(e.top_post&&e.top_post.url)top=`<div class="sub" style="margin-top:4px">Top post: <a href="${esc(e.top_post.url)}" target="_blank" rel="noopener">${esc(shortText(e.top_post.text))}</a></div>`;
  const note=e.impressions>0?'':'<div class="sub" style="margin-top:6px">No bar: this day has 0 impressions.</div>';
- return `<div class="lbl">${esc(head)}</div><div class="sc"><b>${scored?f1(e.score):'\u2014'}</b><span class="sub">${scored?'score':'no score'}</span>${delta}</div>${rows}<div class="ft sub"><b style="color:var(--fg)">${fmt(e.points)} ${pt}</b> / ${impr} impressions</div>${top}${note}`}
+ return `<div class="lbl">${esc(head)}</div><div class="sc"><b>${scored?f1(e.score):'\u2014'}</b><span class="sub">${scored?'score':'no score'}</span>${delta}</div>${rows}<div class="ft sub">${impr} impressions</div>${top}${note}`}
 function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||(innerWidth<820?30:15);const W=opts.W||800,H=opts.H||220,P=opts.W?28:40,B=opts.bars||null,PR=B?(fs>20?78:46):10;if(!h.length)return '<div class="empty">No snapshots yet.</div>';
  const ys=h.map(s=>s[key]),mn=Math.min(...ys),mx=Math.max(...ys),r=Math.max(mx-mn,4),lo=mn-r*.25,hi=mx+r*.25;
  const basePL=(fs>20&&!opts.W)?P*2:P,labelW=Math.ceil(Math.max(fmt(Math.round(lo)).length,fmt(Math.round(hi)).length)*fs*.62)+12;
- const PL=B?Math.max(basePL,labelW):basePL,x=i=>h.length==1?W-PR:PL+(W-PL-PR)*i/(h.length-1),y=v=>16+(H-36)*(1-(v-lo)/(hi-lo));
+ const PL=B?Math.max(basePL,labelW):basePL;
+ const parseDay=s=>{const p=s.split('-');return new Date(+p[0],p[1]-1,+p[2])};
+ const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+ let nDays=h.length,slot=0,x;
+ if(B){
+  const t0=parseDay(h[0].date),t1=parseDay(h[h.length-1].date);
+  nDays=Math.max(1,Math.round((t1-t0)/86400000)+1);
+  slot=(W-PL-PR)/nDays;
+  x=i=>PL+slot*(Math.round((parseDay(h[i].date)-t0)/86400000)+0.5);
+ }else x=i=>h.length==1?W-PR:PL+(W-PL-PR)*i/(h.length-1);
+ const y=v=>16+(H-36)*(1-(v-lo)/(hi-lo));
  const pts=h.map((s,i)=>`${x(i).toFixed(1)},${y(s[key]).toFixed(1)}`);let g='';
- const xGrid=B?W-PR+10:W,st=Math.max(1,Math.ceil((hi-lo)/4));for(let v=Math.max(0,Math.ceil(lo/st)*st);v<=hi;v+=st){const yy=y(v);g+=`<line x1="${PL}" x2="${xGrid}" y1="${yy}" y2="${yy}" stroke="var(--grid)"/><text x="${B?PL-8:0}" y="${yy+4}" text-anchor="${B?'end':'start'}" fill="var(--mut)" font-size="${fs}">${fmt(v)}</text>`}
+ const xGrid=B?W-PR:W,st=Math.max(1,Math.ceil((hi-lo)/4));for(let v=Math.max(0,Math.ceil(lo/st)*st);v<=hi;v+=st){const yy=y(v);g+=`<line x1="${PL}" x2="${xGrid}" y1="${yy}" y2="${yy}" stroke="var(--grid)"/><text x="${B?PL-8:0}" y="${yy+4}" text-anchor="${B?'end':'start'}" fill="var(--mut)" font-size="${fs}">${fmt(v)}</text>`}
  const line=h.length>1?`<path d="M${pts.join(' L')} L${x(h.length-1)},${H} L${x(0)},${H}Z" fill="url(#gr${key})"/><path d="M${pts.join(' L')}" fill="none" stroke="var(--acc)" stroke-width="2.5"/>`:'';
  const lp=pts[pts.length-1].split(',');
  let bars='',ax2='',guide='',halo='',hits='';
  if(B){const vals=B.filter(v=>v>0);
+  const t0=parseDay(h[0].date),byDate={};
+  h.forEach((s,i)=>{byDate[s.date]={s,v:B[i]}});
+  const gap=Math.min(4,slot*0.15),bw=Math.max(1,slot-gap);
   if(vals.length){const max=Math.max(...vals),raw=max/4,pow=Math.pow(10,Math.floor(Math.log10(raw))),n=raw/pow,step=(n<=1?1:n<=2?2:n<=5?5:10)*pow;
-   const smax=Math.ceil((max-1e-9)/step)*step||step,yb=v=>(H-20)-(H*.48)*v/smax,slot=h.length>1?(W-PL-PR)/(h.length-1):(W-PL-PR);
-   const bw=Math.min(Math.max(3,(W-PL-PR)/Math.max(h.length,1)*.62),slot*.82);
-   B.forEach((v,i)=>{if(!(v>0))return;const bh=Math.max(0,H-20-yb(v));bars+=`<rect class="bar" data-i="${i}" x="${(x(i)-bw/2).toFixed(1)}" y="${yb(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="var(--bar)" fill-opacity="0.38" pointer-events="none"/>`});
+   const smax=Math.ceil((max-1e-9)/step)*step||step,yb=v=>(H-20)-(H*.48)*v/smax;
+   for(let i=0;i<nDays;i++){const ds=iso(new Date(t0.getFullYear(),t0.getMonth(),t0.getDate()+i)),row=byDate[ds],v=row?row.v:null;if(!(v>0))continue;
+    const cx=PL+slot*(i+0.5),bh=Math.max(0,H-20-yb(v));
+    bars+=`<rect class="bar" data-date="${ds}" x="${(cx-bw/2).toFixed(1)}" y="${yb(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="var(--bar)" fill-opacity="0.38" pointer-events="none"/>`}
    const nTicks=Math.round(smax/step);for(let i=0;i<=nTicks;i++){const rv=Math.round(i*step*1e6)/1e6;ax2+=`<text x="${W-2}" y="${(yb(rv)+4).toFixed(1)}" text-anchor="end" fill="var(--bar)" font-size="${fs}" pointer-events="none">${step<1?f1(rv):fmt(Math.round(rv))}</text>`}}
   guide=`<line class="gline" y1="12" y2="${H-20}" stroke="var(--mut)" stroke-dasharray="3 3" stroke-opacity=".6" visibility="hidden" pointer-events="none"/>`;
   halo=`<circle class="ghalo" r="4.5" fill="var(--bg)" stroke="var(--acc)" stroke-width="2.5" visibility="hidden" pointer-events="none"/>`;
-  B.forEach((_,i)=>{hits+=`<rect class="hit" data-i="${i}" data-x="${x(i).toFixed(1)}" data-y="${y(h[i][key]).toFixed(1)}" width="0" height="0"/>`});
+  for(let i=0;i<nDays;i++){const ds=iso(new Date(t0.getFullYear(),t0.getMonth(),t0.getDate()+i)),row=byDate[ds],cx=PL+slot*(i+0.5);
+   hits+=`<rect class="hit" data-date="${ds}" data-x="${cx.toFixed(1)}" data-y="${row?y(row.s[key]).toFixed(1):''}" data-snap="${row?1:0}" width="0" height="0"/>`}
   hits+=`<rect class="plot" x="0" y="0" width="${W}" height="${H}" fill="transparent"/>`}
  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;margin-top:10px${B?';cursor:pointer':''}" role="img" aria-label="${B?'Follower growth and daily engagement score':'Chart'}"><defs><linearGradient id="gr${key}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--acc)" stop-opacity=".4"/><stop offset="1" stop-color="var(--acc)" stop-opacity="0"/></linearGradient></defs>${g}${bars}${ax2}${line}<circle cx="${lp[0]}" cy="${lp[1]}" r="5" fill="var(--acc)" pointer-events="none"/>${guide}${halo}${hits}</svg>
  <div class="sub" style="display:flex;justify-content:space-between"><span>${h[0].date}</span><span>${dl(h[h.length-1].date)}</span></div>
@@ -129,17 +144,16 @@ function hideTip(){const tip=$('tip');if(tip){tip.hidden=true;tip.dataset.pin=''
  if(gl)gl.setAttribute('visibility','hidden');if(gh)gh.setAttribute('visibility','hidden')}
 function bindTip(h){const root=$('chart'),svg=root.querySelector('svg');if(!svg)return;
  const hits=[...svg.querySelectorAll('.hit')];if(!hits.length)return;
+ const byDate={};h.forEach(s=>{byDate[s.date]=s});
  const tip=document.createElement('div');tip.className='tip';tip.id='tip';tip.hidden=true;tip.style.pointerEvents='none';root.appendChild(tip);
  const vb=svg.viewBox.baseVal.width||800;
  const idxFrom=e=>{const r=svg.getBoundingClientRect();if(!r.width)return -1;const x=(e.clientX-r.left)*(vb/r.width);let best=0,bd=1e9;hits.forEach((el,i)=>{const d=Math.abs(+el.dataset.x-x);if(d<bd){bd=d;best=i}});return best};
- const highlight=i=>{svg.querySelectorAll('.bar').forEach(r=>r.setAttribute('fill-opacity',r.dataset.i===String(i)?'0.95':'0.38'));
+ const highlight=(i,haloOn)=>{const date=hits[i].dataset.date;
+  svg.querySelectorAll('.bar').forEach(r=>r.setAttribute('fill-opacity',r.dataset.date===date?'0.95':'0.38'));
   const el=hits[i],gl=svg.querySelector('.gline'),gh=svg.querySelector('.ghalo');
   if(gl){gl.setAttribute('x1',el.dataset.x);gl.setAttribute('x2',el.dataset.x);gl.setAttribute('visibility','visible')}
-  if(gh){gh.setAttribute('cx',el.dataset.x);gh.setAttribute('cy',el.dataset.y);gh.setAttribute('visibility','visible')}};
- const show=(i,pin)=>{if(i<0||!h[i]||!h[i].engagement){hideTip();return}
-  tip.innerHTML=tipHTML(h[i].engagement,h[i].date);tip.hidden=false;if(pin)tip.dataset.pin='1';
-  tip.style.pointerEvents=tip.dataset.pin==='1'?'auto':'none';highlight(i);
-  const sr=svg.getBoundingClientRect(),rr=root.getBoundingClientRect(),vbw=svg.viewBox.baseVal.width||vb;
+  if(gh){if(haloOn&&el.dataset.y){gh.setAttribute('cx',el.dataset.x);gh.setAttribute('cy',el.dataset.y);gh.setAttribute('visibility','visible')}else gh.setAttribute('visibility','hidden')}};
+ const place=i=>{const sr=svg.getBoundingClientRect(),rr=root.getBoundingClientRect(),vbw=svg.viewBox.baseVal.width||vb;
   const scale=sr.width/vbw,bx=sr.left-rr.left+(+hits[i].dataset.x)*scale;
   const grid=svg.querySelector('line'),plotLeft=grid?(+grid.getAttribute('x1'))*scale:0;
   const minL=Math.max(4,plotLeft+6),maxL=Math.max(minL,root.clientWidth-tip.offsetWidth-4);
@@ -148,6 +162,12 @@ function bindTip(h){const root=$('chart'),svg=root.querySelector('svg');if(!svg)
   if(left>maxL)left=maxL;
   if(left<minL)left=minL;
   tip.style.left=left+'px';tip.style.top='16px'};
+ const show=(i,pin)=>{if(i<0){hideTip();return}
+  const date=hits[i].dataset.date,row=byDate[date];
+  if(!row||!row.engagement){tip.innerHTML=`<div class="lbl">${esc(dayHead(date))}</div><div class="sub" style="margin-top:6px">No snapshot</div>`}
+  else tip.innerHTML=tipHTML(row.engagement,date);
+  tip.hidden=false;if(pin)tip.dataset.pin='1';
+  tip.style.pointerEvents=tip.dataset.pin==='1'?'auto':'none';highlight(i,!!(row&&row.engagement));place(i)};
  svg.addEventListener('pointermove',e=>{if(e.pointerType==='touch'||tip.dataset.pin==='1')return;show(idxFrom(e),false)});
  svg.addEventListener('pointerdown',e=>{show(idxFrom(e),true)});
  svg.addEventListener('pointerleave',e=>{if(tip.dataset.pin==='1')return;if(e.relatedTarget&&tip.contains(e.relatedTarget))return;hideTip()});
