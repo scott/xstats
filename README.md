@@ -4,6 +4,8 @@ A small, self-hosted X (Twitter) stats dashboard. Track follower growth and per-
 
 ![Dashboard, dark theme, fake demo data](docs/dark-desktop.png)
 
+![Follower growth hover card, dark theme, fake demo data](docs/growth-hover-dark.png)
+
 ## Features
 
 - Account switcher for any number of accounts
