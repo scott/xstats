@@ -1,5 +1,10 @@
 __DOMAIN__ {
 	encode gzip
+	# Static branding only. Browsers and iOS fetch these without basic auth.
+	@icons path /favicon.ico /favicon.svg /favicon-16.png /favicon-32.png /favicon-192.png /favicon-512.png /apple-touch-icon.png /apple-touch-icon-precomposed.png /site.webmanifest
+	handle @icons {
+		reverse_proxy 127.0.0.1:8080
+	}
 	@ingest path /api/ingest
 	handle @ingest {
 		reverse_proxy 127.0.0.1:8080

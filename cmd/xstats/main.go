@@ -242,6 +242,7 @@ func postHistory(db *sql.DB, id string) (map[string]any, error) {
 func newMux(db *sql.DB, tok string) *http.ServeMux {
 	sub, _ := fs.Sub(webFS, "web")
 	mux := http.NewServeMux()
+	registerIcons(mux, sub)
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	mux.HandleFunc("/api/data", func(w http.ResponseWriter, r *http.Request) {
 		d, err := apiData(db)
