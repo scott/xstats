@@ -85,6 +85,8 @@ bin/xstats serve  --db data/xstats.db --addr 127.0.0.1:8080
 
 Open http://127.0.0.1:8080. Handy URL options: `?theme=dark|light`, `?acct=<handle>`, `#post/<id>`.
 
+Those commands run in the foreground. For a dashboard that stays up on this machine, see [Local only](#local-only).
+
 ## Demo with fake data
 
 `scripts/seed.py` writes 30 days of made-up snapshots for two fictional accounts (`example_one`, `example_two`). The screenshots in this README come from it.
@@ -155,6 +157,95 @@ STATS_URL=https://stats.example.com snapshot/push.sh snapshot-2026-10-14.json
 ```
 
 `push.sh` reads the token from `~/.config/xstats/ingest_token` (override with `XSTATS_TOKEN_FILE`) and passes it to curl on stdin, never on the command line.
+
+## Local only
+
+A long-lived dashboard on one machine, with no server and no Caddy. `xstats serve` is bound to `127.0.0.1:8080` and runs as a systemd user service.
+
+What you give up: there is no public URL and no TLS, and the dashboard is viewable only on that machine. Nothing sits in front of the process, so there is no basic auth either. The loopback bind is what keeps it private. Open http://127.0.0.1:8080 on that machine.
+
+1. Build the binary into a stable path and create the data directory:
+
+   ```
+   install -d -m 0755 ~/.local/bin
+   install -d -m 0700 ~/.local/share/xstats ~/.config/xstats
+   CGO_ENABLED=0 go build -o ~/.local/bin/xstats ./cmd/xstats
+   ```
+
+2. Create the ingest token and a mode-0600 env file. `openssl` writes the token to `~/.config/xstats/ingest_token`. The env file is built from that file with `cat`, so the token is never inline in the unit, in argv, or in shell history. The service reads `XSTATS_INGEST_TOKEN` from the env file. `snapshot/push.sh` reads the token file (`XSTATS_TOKEN_FILE` overrides that path; the default is `~/.config/xstats/ingest_token`).
+
+   ```
+   (umask 077; openssl rand -hex 32 > ~/.config/xstats/ingest_token)
+   (umask 077; { printf 'XSTATS_INGEST_TOKEN='; cat ~/.config/xstats/ingest_token; echo; } > ~/.config/xstats/local.env)
+   chmod 600 ~/.config/xstats/ingest_token ~/.config/xstats/local.env
+   ```
+
+   `XSTATS_TZ` is optional. Leave it unset and engagement days use `America/Denver` (zone data is embedded; see the table under Deploy). To override, add one line to that same env file, for example `XSTATS_TZ=America/New_York`. Keep the file mode 0600.
+
+3. Install the user unit. The same file is `deploy/xstats-local.service`:
+
+   ```
+   [Unit]
+   Description=xstats local dashboard
+   After=network.target
+
+   [Service]
+   EnvironmentFile=%h/.config/xstats/local.env
+   ExecStart=%h/.local/bin/xstats serve --db %h/.local/share/xstats/xstats.db --addr 127.0.0.1:8080
+   Restart=on-failure
+
+   [Install]
+   WantedBy=default.target
+   ```
+
+   `%h` is the home directory of the user who owns the service. The unit has no secret in it; `EnvironmentFile=` loads the token.
+
+   ```
+   mkdir -p ~/.config/systemd/user
+   install -m 0644 deploy/xstats-local.service ~/.config/systemd/user/xstats.service
+   systemctl --user daemon-reload
+   systemctl --user enable --now xstats.service
+   loginctl enable-linger "$USER"
+   ```
+
+   `loginctl enable-linger` starts the user service manager at boot and leaves it running after logout, so the dashboard comes back without a login. This unit is per user. The system unit in `deploy/xstats.service` is the one Deploy installs on a server.
+
+4. Feed it with `xstats ingest` or with `snapshot/push.sh` against localhost. A snapshot bundle is one JSON file (see Snapshot format). `scripts/seed.py` writes fake bundles for a demo.
+
+   Into the same database the service has open:
+
+   ```
+   ~/.local/bin/xstats ingest --db ~/.local/share/xstats/xstats.db snapshot.json
+   ```
+
+   Or POST to the running server. `push.sh` takes one file and reads the token file from step 2. `STATS_URL` is required. If `~/.config/xstats/deploy.env` exists, `push.sh` sources it, and a `STATS_URL` in that file replaces the one on the command line.
+
+   ```
+   STATS_URL=http://127.0.0.1:8080 snapshot/push.sh snapshot.json
+   ```
+
+### Moving to a server
+
+Follow [Deploy](#deploy) when you want a public site. Use `xstats.<your domain>` as the hostname (`XSTATS_DOMAIN`), for example `xstats.example.com`.
+
+Stop the local service, then copy the SQLite file. With the service stopped, either a plain copy or the `sqlite3` shell `.backup` is a consistent copy of `~/.local/share/xstats/xstats.db`:
+
+```
+systemctl --user stop xstats.service
+cp ~/.local/share/xstats/xstats.db /tmp/xstats.db
+```
+
+```
+systemctl --user stop xstats.service
+sqlite3 ~/.local/share/xstats/xstats.db ".backup /tmp/xstats.db"
+```
+
+On the server, Deploy has created the `xstats` user and `/var/lib/xstats` (see `deploy/xstats.service`). Stop that system service, copy the file over the server database, and fix ownership so the `xstats` user can write it. This replaces `/var/lib/xstats/xstats.db`:
+
+```
+scp /tmp/xstats.db "root@$XSTATS_HOST:/tmp/xstats.db"
+ssh "root@$XSTATS_HOST" 'systemctl stop xstats && cp /tmp/xstats.db /var/lib/xstats/xstats.db && chown xstats:xstats /var/lib/xstats/xstats.db && systemctl start xstats'
+```
 
 ## Deploy
 

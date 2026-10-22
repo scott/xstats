@@ -1,0 +1,11 @@
+[Unit]
+Description=xstats local dashboard
+After=network.target
+
+[Service]
+EnvironmentFile=%h/.config/xstats/local.env
+ExecStart=%h/.local/bin/xstats serve --db %h/.local/share/xstats/xstats.db --addr 127.0.0.1:8080
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
