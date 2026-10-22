@@ -74,10 +74,15 @@ reset_logs() {
 # be passed as arguments (for example XSTATS_TZ=Europe/Berlin).
 run_deploy() {
   reset_logs
+  local gocache gomodcache
+  gocache=$(go env GOCACHE)
+  gomodcache=$(go env GOMODCACHE)
   (
     export PATH="$TMP/bin:$ORIG_PATH"
     export STUB_LOG="$TMP/log"
     export HOME="$TMP/home"
+    export GOCACHE="$gocache"
+    export GOMODCACHE="$gomodcache"
     export XSTATS_DEPLOY_ENV="$TMP/empty.env"
     export XSTATS_HOST="203.0.113.10"
     export XSTATS_DOMAIN="stats.example.com"
@@ -88,6 +93,7 @@ run_deploy() {
     export SSH_KEY="$TMP/dummy.key"
     export XSTATS_ACCOUNTS="alice,bob"
     unset XSTATS_TZ
+    unset XSTATS_START_DATES
     if [ "$#" -gt 0 ]; then
       export "$@"
     fi
@@ -172,6 +178,9 @@ assert_env "$base_env"
 if grep -q 'XSTATS_TZ' "$TMP/log/env.file"; then
   fail "unset XSTATS_TZ should not write a line"
 fi
+if grep -q 'XSTATS_START_DATES' "$TMP/log/env.file"; then
+  fail "unset XSTATS_START_DATES should not write a line"
+fi
 echo "remote env file:"
 cat "$TMP/log/env.file"
 
@@ -220,6 +229,48 @@ if [ "$(ssh_count)" != "0" ] || [ "$(scp_count)" != "0" ]; then
 fi
 if ! grep -q 'invalid XSTATS_TZ "Not/AZone"' "$TMP/stderr"; then
   fail "missing a clear invalid-zone message"
+fi
+echo "exit: $rc"
+echo "stderr: $(cat "$TMP/stderr")"
+echo "ssh: $(ssh_count) scp: $(scp_count)"
+
+echo "=== XSTATS_START_DATES set ==="
+run_deploy XSTATS_START_DATES='example_a:2026-10-14,example_b:2026-09-01'
+assert_env "${base_env}XSTATS_START_DATES=example_a:2026-10-14,example_b:2026-09-01"$'\n'
+echo "remote env file:"
+cat "$TMP/log/env.file"
+
+echo "=== XSTATS_START_DATES with surrounding whitespace ==="
+run_deploy XSTATS_START_DATES='  example_a:2026-10-14  '
+assert_env "${base_env}XSTATS_START_DATES=example_a:2026-10-14"$'\n'
+echo "remote env file:"
+cat "$TMP/log/env.file"
+
+echo "=== XSTATS_START_DATES empty ==="
+run_deploy XSTATS_START_DATES=
+assert_env "$base_env"
+echo "remote env file:"
+cat "$TMP/log/env.file"
+
+echo "=== XSTATS_START_DATES whitespace only ==="
+run_deploy XSTATS_START_DATES='   '
+assert_env "$base_env"
+echo "remote env file:"
+cat "$TMP/log/env.file"
+
+echo "=== XSTATS_START_DATES=example:2026-02-31 ==="
+set +e
+run_deploy XSTATS_START_DATES='example:2026-02-31'
+rc=$?
+set -e
+if [ "$rc" = 0 ]; then
+  fail "invalid start dates should fail the deploy"
+fi
+if [ "$(ssh_count)" != "0" ] || [ "$(scp_count)" != "0" ]; then
+  fail "invalid start dates touched the server stub: ssh=$(ssh_count) scp=$(scp_count)"
+fi
+if ! grep -q 'bad pair "example:2026-02-31"' "$TMP/stderr"; then
+  fail "missing a clear invalid start-date message"
 fi
 echo "exit: $rc"
 echo "stderr: $(cat "$TMP/stderr")"

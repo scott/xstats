@@ -3,6 +3,8 @@
 # installs Caddy, and sets basic auth. Nothing is built on the droplet.
 # Config: put XSTATS_HOST, XSTATS_DOMAIN, etc. in ~/.config/xstats/deploy.env (or .env.deploy).
 # XSTATS_TZ, when set, is checked locally and written to /etc/xstats/env. Omit it to keep the binary default.
+# XSTATS_START_DATES, when set, is checked locally and written to /etc/xstats/env. Omit it for no start dates.
+# The service reads both at startup. deploy.sh restarts xstats after writing the env file.
 # Usage: XSTATS_HOST=203.0.113.10 XSTATS_DOMAIN=stats.example.com BASIC_AUTH_PASSWORD=... deploy/deploy.sh
 set -euo pipefail
 
@@ -17,8 +19,9 @@ trim_space() {
 
 # render_xstats_env prints the /etc/xstats/env body. The ingest token is read
 # from stdin so it is never placed on a command line. Trailing newlines on the
-# token are removed; the rest of the token is unchanged. XSTATS_TZ is written
-# only when set; omitting the line leaves the binary default in place.
+# token are removed; the rest of the token is unchanged. XSTATS_TZ and
+# XSTATS_START_DATES are written only when set. Omitting XSTATS_TZ leaves
+# the binary default. Omitting XSTATS_START_DATES means no start dates.
 render_xstats_env() {
   local token
   # $(cat) strips trailing newlines only. printf is a shell builtin, so the
@@ -28,6 +31,9 @@ render_xstats_env() {
   printf 'XSTATS_ACCOUNTS=%s\n' "${XSTATS_ACCOUNTS:-}"
   if [ -n "${XSTATS_TZ:-}" ]; then
     printf 'XSTATS_TZ=%s\n' "$XSTATS_TZ"
+  fi
+  if [ -n "${XSTATS_START_DATES:-}" ]; then
+    printf 'XSTATS_START_DATES=%s\n' "$XSTATS_START_DATES"
   fi
 }
 
@@ -71,6 +77,24 @@ EOF
   fi
 }
 
+# validate_xstats_start_dates rejects a value the server would refuse at
+# startup. go run uses this checkout, so the check matches the binary that
+# deploy builds. Called before scp/ssh. A bad pair is printed and the
+# deploy stops.
+validate_xstats_start_dates() {
+  local value="$1" dir err
+  dir=$(mktemp -d)
+  trap 'rm -rf "$dir"' RETURN
+  if ! err=$(XSTATS_START_DATES="$value" go run ./cmd/xstats ingest --db "$dir/check.db" 2>&1); then
+    if [ -n "$err" ]; then
+      printf '%s\n' "$err" >&2
+    else
+      printf 'invalid XSTATS_START_DATES %q\n' "$value" >&2
+    fi
+    return 1
+  fi
+}
+
 cd "$(dirname "$0")/.."
 # Load local deploy config (gitignored). See .env.deploy.example.
 DEPLOY_ENV="${XSTATS_DEPLOY_ENV:-$HOME/.config/xstats/deploy.env}"
@@ -90,6 +114,12 @@ if [ -n "${XSTATS_TZ+x}" ]; then
 fi
 if [ -n "${XSTATS_TZ:-}" ]; then
   validate_xstats_tz "$XSTATS_TZ"
+fi
+if [ -n "${XSTATS_START_DATES+x}" ]; then
+  XSTATS_START_DATES=$(trim_space "$XSTATS_START_DATES")
+fi
+if [ -n "${XSTATS_START_DATES:-}" ]; then
+  validate_xstats_start_dates "$XSTATS_START_DATES"
 fi
 # Same gate as the zone check: fail before the build, scp, or ssh.
 TOKEN_FILE="${XSTATS_TOKEN_FILE:-$HOME/.config/xstats/ingest_token}"

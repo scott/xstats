@@ -247,16 +247,24 @@ func apiData(db *sql.DB) (any, error) {
 			hist = append(hist, map[string]any{"date": d, "followers": f, "following": g, "posts": p})
 		}
 		r.Close()
+		start := accountStart(a.h)
 		if len(hist) > 0 {
 			postsForScore, err := loadLatestPosts(db, a.h)
 			if err != nil {
 				return nil, err
+			}
+			if start != "" {
+				postsForScore = postsOnOrAfter(postsForScore, start, loc)
 			}
 			snaps := make([]histDay, len(hist))
 			for i, row := range hist {
 				snaps[i] = histDay{Date: row["date"].(string), Followers: row["followers"].(int)}
 			}
 			eng := aggregateDays(snaps, postsForScore, today, loc)
+			if start != "" {
+				eng = clipEngagement(eng, snaps, start)
+				hist = historyOnOrAfter(hist, start)
+			}
 			nBack := 0
 			for nBack < len(eng) && eng[nBack].Backfilled {
 				nBack++
@@ -285,6 +293,12 @@ func apiData(db *sql.DB) (any, error) {
 			var i, rp *int
 			var l, rt, ir int
 			r.Scan(&id, &t, &c, &i, &l, &rp, &rt, &ir, &src)
+			if start != "" {
+				day, ok := postDay(c, loc)
+				if !ok || day < start {
+					continue
+				}
+			}
 			posts = append(posts, map[string]any{"is_reply": ir == 1, "id": id, "text": t, "created_at": c, "impressions": i, "likes": l, "replies": rp, "reposts": rt, "source": src,
 				"url": "https://x.com/" + a.h + "/status/" + id})
 		}
@@ -344,6 +358,27 @@ func postHistory(db *sql.DB, id string) (map[string]any, error) {
 	}
 	if hist == nil {
 		return nil, nil
+	}
+	if start := accountStart(out["account"].(string)); start != "" {
+		loc, err := statsLocation()
+		if err != nil {
+			return nil, err
+		}
+		created, _ := out["created_at"].(string)
+		day, ok := postDay(created, loc)
+		if !ok || day < start {
+			return nil, nil
+		}
+		kept := hist[:0]
+		for _, row := range hist {
+			if row["date"].(string) >= start {
+				kept = append(kept, row)
+			}
+		}
+		hist = kept
+		if len(hist) == 0 {
+			return nil, nil
+		}
 	}
 	out["history"] = hist
 	return out, nil
@@ -447,6 +482,9 @@ func main() {
 	account := fsFlags.String("account", "", "handle for an analytics CSV, or for an archive with no data/account.js")
 	fsFlags.Parse(os.Args[2:])
 	if _, err := statsLocation(); err != nil {
+		log.Fatal(err)
+	}
+	if err := configureStartDates(); err != nil {
 		log.Fatal(err)
 	}
 	db := openDB(*dbp)
