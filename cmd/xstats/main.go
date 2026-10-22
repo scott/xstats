@@ -255,8 +255,26 @@ func apiData(db *sql.DB) (any, error) {
 			for i, row := range hist {
 				snaps[i] = histDay{Date: row["date"].(string), Followers: row["followers"].(int)}
 			}
-			for i, e := range aggregateDays(snaps, postsForScore, today, loc) {
+			eng := aggregateDays(snaps, postsForScore, today, loc)
+			nBack := 0
+			for nBack < len(eng) && eng[nBack].Backfilled {
+				nBack++
+			}
+			if nBack+len(hist) != len(eng) {
+				return nil, fmt.Errorf("engagement days")
+			}
+			prefix := make([]map[string]any, nBack)
+			for i, e := range eng[:nBack] {
+				prefix[i] = map[string]any{
+					"date": e.Date, "followers": nil, "following": nil, "posts": nil,
+					"engagement": engagementJSON(a.h, e),
+				}
+			}
+			for i, e := range eng[nBack:] {
 				hist[i]["engagement"] = engagementJSON(a.h, e)
+			}
+			if nBack > 0 {
+				hist = append(prefix, hist...)
 			}
 		}
 		var posts []map[string]any

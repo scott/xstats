@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -58,16 +59,19 @@ type scoredPost struct {
 	Points         int
 }
 
-// dayEngagement is the per-account, per-snapshot-day score.
+// dayEngagement is one chart day for an account.
 //
 // Score is the weighted points total, including days with 0 impressions.
 // Points is the same number, kept so older clients still find it. A negative
 // total (followers dropped) is returned; the chart draws no bar unless the
 // score is greater than 0. NewFollowers on the first snapshot is 0: there is
-// no prior day to subtract. InProgress is true when Date equals today,
-// because that snapshot can still be re-pushed. ScoreDelta is this score
-// minus the mean score of earlier snapshot days in the previous 7 calendar
-// days. Nil when the window has no scored day.
+// no prior day to subtract. It is nil on a backfilled day (posts before the
+// first snapshot); that score omits the follower term. InProgress is true
+// when a snapshot's Date equals today, because that snapshot can still be
+// re-pushed. ScoreDelta is this score minus the mean score of earlier
+// snapshot days in the previous 7 calendar days. Backfilled days are left
+// out of every window, and a backfilled day's own ScoreDelta is nil. Nil
+// also when the window has no scored snapshot day.
 //
 // Impressions is nil when the day has posts but every one of them omitted
 // the count. Nil counts are not added in. A day with no posts is 0.
@@ -75,13 +79,16 @@ type dayEngagement struct {
 	Date string
 	// Comments is nil when the day has posts but every reply count is unknown.
 	// Nil counts are not added into the score. A day with no posts is 0.
-	Comments                      *int
-	NewFollowers, Reshares, Likes int
-	Impressions                   *int
-	Points                        int
-	Score, ScoreDelta             *float64
-	InProgress                    bool
-	Top                           *scoredPost
+	Comments *int
+	// NewFollowers is nil on a backfilled day. The first snapshot day is 0.
+	NewFollowers      *int
+	Reshares, Likes   int
+	Impressions       *int
+	Points            int
+	Score, ScoreDelta *float64
+	InProgress        bool
+	Backfilled        bool
+	Top               *scoredPost
 }
 
 // statsLocation is the calendar used for engagement days and for "today".
@@ -189,11 +196,13 @@ func (b *dayBucket) add(p scoredPost) {
 	}
 }
 
-// aggregateDays buckets latest-per-post metrics onto follower snapshot days.
-// created_at is interpreted in loc (see postDay). A post whose day is not a
-// snapshot day is left out. A post is counted once, from its latest snapshot,
-// so re-pushing a day replaces numbers instead of adding them.
-// today is the calendar day in that same zone; it sets InProgress.
+// aggregateDays buckets latest-per-post metrics onto chart days.
+// created_at is interpreted in loc (see postDay). A post dated before the
+// first follower snapshot becomes a backfilled day. A post on a later day
+// that has no snapshot is left out. A post is counted once, from its latest
+// snapshot, so re-pushing a day replaces numbers instead of adding them.
+// today is the calendar day in that same zone; it sets InProgress on
+// snapshot days. hist is already ordered by date.
 func aggregateDays(hist []histDay, posts []scoredPost, today string, loc *time.Location) []dayEngagement {
 	byDay := map[string]*dayBucket{}
 	for _, p := range posts {
@@ -208,35 +217,34 @@ func aggregateDays(hist []histDay, posts []scoredPost, today string, loc *time.L
 		}
 		b.add(p)
 	}
-	out := make([]dayEngagement, len(hist))
+	out := make([]dayEngagement, 0, len(hist))
+	if len(hist) > 0 {
+		var early []string
+		for day := range byDay {
+			if day < hist[0].Date {
+				early = append(early, day)
+			}
+		}
+		sort.Strings(early)
+		for _, day := range early {
+			e := fromBucket(dayEngagement{Date: day, Backfilled: true}, byDay[day])
+			// No follower term: the count for this day is unknown, not zero.
+			e.Points = postLevelPoints(knownCount(e.Comments), e.Reshares, e.Likes)
+			sc := float64(e.Points)
+			e.Score = &sc
+			out = append(out, e)
+		}
+	}
 	for i, s := range hist {
 		nf := 0
 		if i > 0 {
 			nf = s.Followers - hist[i-1].Followers
 		}
-		e := dayEngagement{Date: s.Date, NewFollowers: nf, InProgress: s.Date == today}
-		if b := byDay[s.Date]; b != nil {
-			e.Comments = b.comments
-			e.Reshares = b.reshares
-			e.Likes = b.likes
-			e.Impressions = b.impressions
-			if b.hasTop {
-				top := b.top
-				e.Top = &top
-			}
-		} else {
-			zero := 0
-			e.Impressions = &zero
-			e.Comments = &zero
-		}
-		comments := 0
-		if e.Comments != nil {
-			comments = *e.Comments
-		}
-		e.Points = dayLevelPoints(comments, e.NewFollowers, e.Reshares, e.Likes)
+		e := fromBucket(dayEngagement{Date: s.Date, NewFollowers: &nf, InProgress: s.Date == today}, byDay[s.Date])
+		e.Points = dayLevelPoints(knownCount(e.Comments), nf, e.Reshares, e.Likes)
 		sc := float64(e.Points)
 		e.Score = &sc
-		out[i] = e
+		out = append(out, e)
 	}
 	for i := range out {
 		out[i].ScoreDelta = priorWeekDelta(out, i)
@@ -244,9 +252,35 @@ func aggregateDays(hist []histDay, posts []scoredPost, today string, loc *time.L
 	return out
 }
 
-// priorWeekDelta is score[i] minus the average score of days in [date-7d, date).
+func knownCount(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+func fromBucket(e dayEngagement, b *dayBucket) dayEngagement {
+	if b == nil {
+		zero := 0
+		e.Impressions = &zero
+		e.Comments = &zero
+		return e
+	}
+	e.Comments = b.comments
+	e.Reshares = b.reshares
+	e.Likes = b.likes
+	e.Impressions = b.impressions
+	if b.hasTop {
+		top := b.top
+		e.Top = &top
+	}
+	return e
+}
+
+// priorWeekDelta is score[i] minus the average score of snapshot days in
+// [date-7d, date). Backfilled days are not members of the window.
 func priorWeekDelta(days []dayEngagement, i int) *float64 {
-	if days[i].Score == nil {
+	if days[i].Backfilled || days[i].Score == nil {
 		return nil
 	}
 	cur, err := time.Parse("2006-01-02", days[i].Date)
@@ -257,7 +291,7 @@ func priorWeekDelta(days []dayEngagement, i int) *float64 {
 	var sum float64
 	n := 0
 	for j := 0; j < i; j++ {
-		if days[j].Score == nil {
+		if days[j].Backfilled || days[j].Score == nil {
 			continue
 		}
 		d, err := time.Parse("2006-01-02", days[j].Date)
@@ -298,15 +332,19 @@ func loadLatestPosts(db *sql.DB, account string) ([]scoredPost, error) {
 func engagementJSON(handle string, e dayEngagement) map[string]any {
 	m := map[string]any{
 		"comments":      e.Comments,
-		"new_followers": e.NewFollowers,
+		"new_followers": nil,
 		"reshares":      e.Reshares,
 		"likes":         e.Likes,
 		"impressions":   e.Impressions,
 		"points":        e.Points,
 		"in_progress":   e.InProgress,
+		"backfilled":    e.Backfilled,
 		"score":         nil,
 		"score_delta":   nil,
 		"top_post":      nil,
+	}
+	if e.NewFollowers != nil {
+		m["new_followers"] = *e.NewFollowers
 	}
 	if e.Score != nil {
 		m["score"] = *e.Score
