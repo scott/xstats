@@ -141,7 +141,7 @@ func TestEdgeBucketClipping(t *testing.T) {
 		t.Fatalf("span %d", daysInclusive(from, to))
 	}
 	var rows []map[string]any
-	for d := civil(from, loc); !d.After(civil(to, loc)); d = addCivil(d, 0, 0, 1) {
+	for d := civil(from); !d.After(civil(to)); d = addCivil(d, 0, 0, 1) {
 		rows = append(rows, dayRow(d.Format("2006-01-02"), 100, 2))
 	}
 	got := groupDaily(rows, from, to, "week", loc)
@@ -176,7 +176,7 @@ func TestBucketSumsMatchDailyTotals(t *testing.T) {
 	var rows []map[string]any
 	var wantScore float64
 	var wantLikes, wantComments, wantReshares, wantNF, wantImpr int
-	for i, d := 0, civil(from, loc); !d.After(civil(to, loc)); i, d = i+1, addCivil(d, 0, 0, 1) {
+	for i, d := 0, civil(from); !d.After(civil(to)); i, d = i+1, addCivil(d, 0, 0, 1) {
 		likes := i % 5
 		comments := i % 3
 		reshares := i % 2
@@ -328,7 +328,7 @@ func TestRangeAPIGroupsInDenver(t *testing.T) {
 	ing("long-b.json", snapBundle("2026-10-22", "demo_long", 80, []string{
 		livePost("91002", denverStamp(t, "2026-10-22"), "example long close", 1),
 	}))
-	for d := civil("2026-09-01", loc); !d.After(civil("2026-10-22", loc)); d = addCivil(d, 0, 0, 1) {
+	for d := civil("2026-09-01"); !d.After(civil("2026-10-22")); d = addCivil(d, 0, 0, 1) {
 		day := d.Format("2006-01-02")
 		id := "9" + strings.ReplaceAll(day, "-", "")
 		ing(day+".json", snapBundle(day, "demo", 1000+d.YearDay(), []string{
@@ -460,16 +460,130 @@ func TestRangeAPIGroupsInDenver(t *testing.T) {
 	}
 	mid := rangeRoot(t, mux, "range=custom&from=2026-10-05&to=2026-10-14")
 	mh := mid["accounts"].(map[string]any)["demo"].(map[string]any)
-	if asInt(mh["followers"]) != 1000+civil("2026-10-14", loc).YearDay() {
+	if asInt(mh["followers"]) != 1000+civil("2026-10-14").YearDay() {
 		t.Fatalf("followers tile %v", mh["followers"])
 	}
 	delta := mh["delta"].(map[string]any)
 	if delta["baseline"] != "2026-10-04" {
 		t.Fatalf("baseline %+v", delta)
 	}
-	wantDelta := (1000 + civil("2026-10-14", loc).YearDay()) - (1000 + civil("2026-10-04", loc).YearDay())
+	wantDelta := (1000 + civil("2026-10-14").YearDay()) - (1000 + civil("2026-10-04").YearDay())
 	if asInt(delta["followers"]) != wantDelta {
 		t.Fatalf("delta %v want %d", delta["followers"], wantDelta)
+	}
+}
+
+// slotsWithin fails fast if slotKeys stops advancing. A DST gap used to
+// make the day step return the same date, and the loop never finished.
+func slotsWithin(t *testing.T, from, to, bucket string, loc *time.Location) []string {
+	t.Helper()
+	ch := make(chan []string, 1)
+	go func() { ch <- slotKeys(from, to, bucket, loc) }()
+	select {
+	case s := <-ch:
+		return s
+	case <-time.After(2 * time.Second):
+		t.Fatalf("slotKeys %s %s..%s hung", bucket, from, to)
+		return nil
+	}
+}
+
+func TestSantiagoDSTSlots(t *testing.T) {
+	loc, err := time.LoadLocation("America/Santiago")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 2025-09-07 00:00 does not exist in Santiago. Clocks jump forward,
+	// and a local-midnight parse lands on the previous evening.
+	sun := civil("2025-09-07")
+	if sun.Weekday() != time.Sunday || mondayIndex(sun) != 6 {
+		t.Fatalf("DST day weekday %s index %d", sun.Weekday(), mondayIndex(sun))
+	}
+	mon := civil("2025-09-08")
+	if mon.Weekday() != time.Monday || mondayIndex(mon) != 0 {
+		t.Fatalf("next day weekday %s index %d", mon.Weekday(), mondayIndex(mon))
+	}
+	if got := addCivil(sun, 0, 0, 1).Format("2006-01-02"); got != "2025-09-08" {
+		t.Fatalf("day after the gap is %s", got)
+	}
+	if bucketStart("2025-09-07", "week", loc) != "2025-09-01" || bucketStart("2025-09-08", "week", loc) != "2025-09-08" {
+		t.Fatalf("week starts %s %s", bucketStart("2025-09-07", "week", loc), bucketStart("2025-09-08", "week", loc))
+	}
+	if bucketStart("2025-09-07", "month", loc) != "2025-09-01" {
+		t.Fatalf("month start %s", bucketStart("2025-09-07", "month", loc))
+	}
+	days := slotsWithin(t, "2025-09-01", "2025-09-15", "day", loc)
+	if len(days) != 15 || days[0] != "2025-09-01" || days[6] != "2025-09-07" || days[14] != "2025-09-15" {
+		t.Fatalf("day slots %v", days)
+	}
+	weeks := slotsWithin(t, "2025-09-03", "2025-09-15", "week", loc)
+	if strings.Join(weeks, ",") != "2025-09-01,2025-09-08,2025-09-15" {
+		t.Fatalf("week slots %v", weeks)
+	}
+	months := slotsWithin(t, "2025-08-20", "2025-10-10", "month", loc)
+	if strings.Join(months, ",") != "2025-08-01,2025-09-01,2025-10-01" {
+		t.Fatalf("month slots %v", months)
+	}
+	gap := slotsWithin(t, "2025-09-07", "2025-09-09", "day", loc)
+	if strings.Join(gap, ",") != "2025-09-07,2025-09-08,2025-09-09" {
+		t.Fatalf("gap slots %v", gap)
+	}
+	now := time.Date(2025, 9, 7, 15, 0, 0, 0, loc)
+	week, err := resolveRange("week", "", "", now, loc)
+	if err != nil || week.From != "2025-09-01" || week.To != "2025-09-07" || week.DataTo != "2025-09-07" {
+		t.Fatalf("week window %+v %v", week, err)
+	}
+	month, err := resolveRange("month", "", "", now, loc)
+	if err != nil || month.From != "2025-09-01" || month.To != "2025-09-30" || month.DataTo != "2025-09-07" {
+		t.Fatalf("month window %+v %v", month, err)
+	}
+}
+
+func TestRangeClampsBeforeFirstDay(t *testing.T) {
+	pinNow(t, denverAt(t, 2026, time.October, 22, 12, 0))
+	t.Setenv("XSTATS_TZ", "America/Denver")
+	t.Setenv("XSTATS_START_DATES", "")
+	if err := configureStartDates(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { accountStartDates = nil })
+
+	db := openTestDB(t)
+	if err := ingestBytes(db, []byte(snapBundle("2026-10-20", "shown", 100, nil))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO accounts(handle,user_id,name,avatar) VALUES('blank','2','Blank','')`); err != nil {
+		t.Fatal(err)
+	}
+	root := rangeRoot(t, newMux(db, "secret"), "range=custom&from=0001-01-01&to=2026-10-22")
+	rng := root["range"].(map[string]any)
+	if rng["from"] != "2026-10-20" || asInt(rng["days"]) != 3 || root["bucket"] != "day" {
+		t.Fatalf("top range %+v bucket %v", rng, root["bucket"])
+	}
+	blank := root["accounts"].(map[string]any)["blank"].(map[string]any)
+	if blank["from"] != "2026-10-20" || asInt(blank["days"]) != 3 {
+		t.Fatalf("blank window from %v days %v", blank["from"], blank["days"])
+	}
+	slots, _ := blank["slots"].([]any)
+	if len(slots) != 3 || slots[0] != "2026-10-20" || slots[2] != "2026-10-22" {
+		t.Fatalf("blank slots %v", slots)
+	}
+	if root["accounts"].(map[string]any)["shown"].(map[string]any)["from"] != "2026-10-20" {
+		t.Fatalf("shown from %v", root["accounts"].(map[string]any)["shown"].(map[string]any)["from"])
+	}
+
+	empty := openTestDB(t)
+	if _, err := empty.Exec(`INSERT INTO accounts(handle,user_id,name,avatar) VALUES('blank','2','Blank','')`); err != nil {
+		t.Fatal(err)
+	}
+	root = rangeRoot(t, newMux(empty, "secret"), "range=custom&from=0001-01-01&to=2026-10-22")
+	rng = root["range"].(map[string]any)
+	if rng["from"] != "2026-10-22" || asInt(rng["days"]) != 1 || root["bucket"] != "day" {
+		t.Fatalf("no-snapshot range %+v bucket %v", rng, root["bucket"])
+	}
+	slots, _ = root["accounts"].(map[string]any)["blank"].(map[string]any)["slots"].([]any)
+	if len(slots) != 1 || slots[0] != "2026-10-22" {
+		t.Fatalf("no-snapshot slots %v", slots)
 	}
 }
 
@@ -488,6 +602,6 @@ func rangeRoot(t *testing.T, mux *http.ServeMux, q string) map[string]any {
 
 func denverStamp(t *testing.T, day string) string {
 	t.Helper()
-	d := civil(day, denver(t))
-	return time.Date(d.Year(), d.Month(), d.Day(), 12, 0, 0, 0, d.Location()).Format(time.RFC3339)
+	d := civil(day)
+	return time.Date(d.Year(), d.Month(), d.Day(), 12, 0, 0, 0, denver(t)).Format(time.RFC3339)
 }

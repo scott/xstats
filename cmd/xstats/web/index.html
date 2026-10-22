@@ -139,14 +139,14 @@ const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&qu
 const Q=new URLSearchParams(location.search);
 const RANGES=[['today','Today'],['yesterday','Yesterday'],['week','This week'],['month','This month'],['all','All time']];
 const RLABEL={today:'today',yesterday:'yesterday',week:'this week',month:'this month',all:'all time'};
-let rg=Q.get('range')||localStorage.getItem('range')||'all';
-let CR={from:'',to:''};
-if(rg==='custom'){
- if(Q.get('range')==='custom')CR={from:Q.get('from')||'',to:Q.get('to')||''};
- else CR={from:localStorage.getItem('rangeFrom')||'',to:localStorage.getItem('rangeTo')||''};
-}
-if(!RANGES.some(r=>r[0]===rg)&&rg!=='custom')rg='all';
-if(rg==='custom'&&(!/^\d{4}-\d{2}-\d{2}$/.test(CR.from)||!/^\d{4}-\d{2}-\d{2}$/.test(CR.to)||CR.to<CR.from))rg='all';
+function rangeFromQuery(q,allowStore){let key=q.get('range')||(allowStore&&localStorage.getItem('range'))||'all';let from='',to='';
+ if(key==='custom'){if(q.get('range')==='custom'){from=q.get('from')||'';to=q.get('to')||''}else if(allowStore){from=localStorage.getItem('rangeFrom')||'';to=localStorage.getItem('rangeTo')||''}}
+ if(!RANGES.some(r=>r[0]===key)&&key!=='custom')key='all';
+ if(key==='custom'&&(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||to<from))key='all';
+ return {key,from,to}}
+const initRange=rangeFromQuery(Q,true);
+let rg=initRange.key;
+let CR={from:initRange.from,to:initRange.to};
 let HANDLES=[];let D,cur=Q.get('acct')||localStorage.getItem('acct')||HANDLES[0];
 let P=null,booted=false;
 const today=()=>(D&&D.today)||'',TZ=()=>(D&&D.tz)||'UTC',dl=d=>d&&d===today()?'Today (in progress)':(d||'');
@@ -256,7 +256,8 @@ function hideTip(){const tip=$('tip');if(tip){tip.hidden=true;tip.dataset.pin=''
  svg.querySelectorAll('.bar').forEach(r=>r.setAttribute('fill-opacity',r.dataset.bf==='1'?'0.45':'0.38'));
  const gl=svg.querySelector('.gline'),gh=svg.querySelector('.ghalo');
  if(gl)gl.setAttribute('visibility','hidden');if(gh)gh.setAttribute('visibility','hidden')}
-function zoomTo(f,t){hideTip();CR={from:f,to:t};rg='custom';load()}
+let histMode='replace';
+function zoomTo(f,t){hideTip();CR={from:f,to:t};rg='custom';histMode='push';load()}
 function bindTip(h,bk){const root=$('chart'),svg=root.querySelector('svg');if(!svg)return;
  const hits=[...svg.querySelectorAll('.hit')];if(!hits.length)return;
  const byDate={};h.forEach(s=>{byDate[s.date]=s});
@@ -340,7 +341,7 @@ function render(){const a=D.accounts[cur];if(!a){$('fc').textContent='No data';r
  if(allLive) note+=' Reposts include quotes.';
  if(anyArchive) note+=' Archive rows have no reply, quote or impression counts.';
  note+=' Retweets are not shown.';
- const cap=12,total=a.posts_total||shown.length;
+ const cap=12,total=shown.length;
  if(total>cap)note='Showing the '+cap+' most recent of '+fmt(total)+' posts. '+note;
  $('foot').textContent=note;
  $('ptl').textContent=postsTitle(a);
@@ -421,11 +422,14 @@ function pageURL(){const u=new URL(location.href);u.searchParams.set('range',rg)
  if(cur)u.searchParams.set('acct',cur);return u}
 function saveRange(){localStorage.setItem('range',rg);
  if(rg==='custom'){localStorage.setItem('rangeFrom',CR.from);localStorage.setItem('rangeTo',CR.to)}
- history.replaceState(null,'',pageURL())}
+ const mode=histMode;histMode='replace';
+ if(mode==='skip')return;
+ if(mode==='push')history.pushState({range:rg,from:CR.from,to:CR.to},'',pageURL());
+ else history.replaceState({range:rg,from:CR.from,to:CR.to},'',pageURL())}
 function bootHandles(){const ks=Object.keys(D.accounts||{}).sort();HANDLES=(D.order||[]).filter(h=>D.accounts[h]);ks.forEach(h=>{if(!HANDLES.includes(h))HANDLES.push(h)});if(!D.accounts[cur])cur=HANDLES[0]}
 async function load(){const p=new URLSearchParams({range:rg});if(rg==='custom'){p.set('from',CR.from);p.set('to',CR.to)}
  const r=await fetch('/api/data?'+p);
- if(!r.ok){if(rg!=='all'){rg='all';return load()}$('fc').textContent='Error';return}
+ if(!r.ok){histMode='replace';if(rg!=='all'){rg='all';return load()}$('fc').textContent='Error';return}
  D=await r.json();bootHandles();saveRange();render();if(!booted){booted=true;route()}}
 document.addEventListener('click',e=>{const tr=e.target.closest('tr.pr');if(tr&&!e.target.closest('a')){location.hash='post/'+tr.dataset.id}});
 $('ov').onclick=e=>{if(e.target.id==='ov')closeP()};addEventListener('keydown',e=>{if(e.key==='Escape'){if(P){closePicker(true);return}hideTip();closeP()}});
@@ -440,5 +444,6 @@ async function openP(id){const r=await fetch('/api/post/'+id);if(!r.ok){$('pn').
  ${h.length<2?'<div class="empty">Charts fill in as daily snapshots run.</div>':''}`;$('ov').classList.add('open')}
 function route(){const m=location.hash.match(/^#post\/(\d+)$/);if(m)openP(m[1]);else $('ov').classList.remove('open')}
 addEventListener('hashchange',route);
+addEventListener('popstate',()=>{if(P)closePicker(false);hideTip();const n=rangeFromQuery(new URLSearchParams(location.search),false);rg=n.key;CR={from:n.from,to:n.to};const acct=new URLSearchParams(location.search).get('acct');if(acct)cur=acct;histMode='skip';load()});
 load().catch(()=>{$('fc').textContent='Error'});
 </script></body></html>

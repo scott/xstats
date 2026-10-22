@@ -84,7 +84,7 @@ func parseRangeQuery(q url.Values) (key, from, to string, legacy bool, err error
 // now is converted into loc first, so Sunday evening in that zone does
 // not become Monday because UTC has already rolled over.
 func resolveRange(key, from, to string, now time.Time, loc *time.Location) (rangeSpec, error) {
-	todayT := civil(now.In(loc).Format("2006-01-02"), loc)
+	todayT := civil(now.In(loc).Format("2006-01-02"))
 	today := todayT.Format("2006-01-02")
 	switch key {
 	case "today":
@@ -97,7 +97,7 @@ func resolveRange(key, from, to string, now time.Time, loc *time.Location) (rang
 		sun := addCivil(mon, 0, 0, 6)
 		return rangeSpec{Key: "week", From: mon.Format("2006-01-02"), To: sun.Format("2006-01-02"), DataTo: today}, nil
 	case "month":
-		first := time.Date(todayT.Year(), todayT.Month(), 1, 0, 0, 0, 0, loc)
+		first := time.Date(todayT.Year(), todayT.Month(), 1, 0, 0, 0, 0, time.UTC)
 		last := addCivil(first, 0, 1, -1)
 		return rangeSpec{Key: "month", From: first.Format("2006-01-02"), To: last.Format("2006-01-02"), DataTo: today}, nil
 	case "all":
@@ -112,19 +112,21 @@ func resolveRange(key, from, to string, now time.Time, loc *time.Location) (rang
 	}
 }
 
-// civil is midnight of a YYYY-MM-DD day in loc.
-func civil(day string, loc *time.Location) time.Time {
-	t, err := time.ParseInLocation("2006-01-02", day, loc)
+// civil parses a YYYY-MM-DD day in UTC. Calendar steps stay on UTC so a
+// zone where local midnight does not exist (DST spring-forward) cannot
+// repeat the previous day.
+func civil(day string) time.Time {
+	t, err := time.Parse("2006-01-02", day)
 	if err != nil {
 		return time.Time{}
 	}
 	return t
 }
 
-// addCivil moves by calendar years, months and days and lands on midnight.
-// Adding a day across a DST change stays on the next calendar date.
+// addCivil moves by calendar years, months and days and lands on UTC midnight.
 func addCivil(t time.Time, years, months, days int) time.Time {
-	return time.Date(t.Year()+years, t.Month()+time.Month(months), t.Day()+days, 0, 0, 0, 0, t.Location())
+	u := t.In(time.UTC)
+	return time.Date(u.Year()+years, u.Month()+time.Month(months), u.Day()+days, 0, 0, 0, 0, time.UTC)
 }
 
 // mondayIndex is 0 on Monday and 6 on Sunday.
@@ -146,36 +148,43 @@ func daysInclusive(from, to string) int {
 	return int(b.Sub(a)/(24*time.Hour)) + 1
 }
 
-// bucketStart is the Monday of a week or the 1st of a month, in loc.
-func bucketStart(day, bucket string, loc *time.Location) string {
-	t := civil(day, loc)
+// bucketStart is the Monday of a week or the 1st of a month.
+// The zone is not used: the civil Monday is the same everywhere.
+func bucketStart(day, bucket string, _ *time.Location) string {
+	t := civil(day)
 	switch bucket {
 	case "week":
 		return addCivil(t, 0, 0, -mondayIndex(t)).Format("2006-01-02")
 	case "month":
-		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, loc).Format("2006-01-02")
+		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
 	default:
 		return day
 	}
 }
 
 // bucketEnd is the Sunday of that week or the last day of that month.
-func bucketEnd(start, bucket string, loc *time.Location) string {
-	t := civil(start, loc)
+func bucketEnd(start, bucket string, _ *time.Location) string {
+	t := civil(start)
 	switch bucket {
 	case "week":
 		return addCivil(t, 0, 0, 6).Format("2006-01-02")
 	case "month":
-		first := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, loc)
+		first := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
 		return addCivil(first, 0, 1, -1).Format("2006-01-02")
 	default:
 		return start
 	}
 }
 
+// maxSlotKeys caps a chart. A stuck step used to loop forever on a DST
+// gap; the cap and the "next day must be later" check keep that from
+// hanging a request if the calendar math breaks again.
+const maxSlotKeys = 10000
+
 // slotKeys lists one chart slot per bucket from the range start through
 // slotTo. Week and month slots use the unclipped bucket start, so the
 // first label can name a Monday or a 1st that sits just before the range.
+// The step is a UTC civil date, so loc cannot shift it.
 func slotKeys(from, slotTo, bucket string, loc *time.Location) []string {
 	if from == "" || slotTo == "" {
 		return []string{}
@@ -187,20 +196,23 @@ func slotKeys(from, slotTo, bucket string, loc *time.Location) []string {
 	if slotTo < start {
 		return []string{}
 	}
-	out := []string{}
+	stepY, stepM, stepD := 0, 0, 1
 	switch bucket {
 	case "week":
-		for k := bucketStart(from, "week", loc); k <= slotTo; k = addCivil(civil(k, loc), 0, 0, 7).Format("2006-01-02") {
-			out = append(out, k)
-		}
+		stepD = 7
+		from = start
 	case "month":
-		for k := bucketStart(from, "month", loc); k <= slotTo; k = addCivil(civil(k, loc), 0, 1, 0).Format("2006-01-02") {
-			out = append(out, k)
+		stepM, stepD = 1, 0
+		from = start
+	}
+	out := []string{}
+	for k := from; k <= slotTo && len(out) < maxSlotKeys; {
+		out = append(out, k)
+		next := addCivil(civil(k), stepY, stepM, stepD).Format("2006-01-02")
+		if next <= k {
+			break
 		}
-	default:
-		for k := from; k <= slotTo; k = addCivil(civil(k, loc), 0, 0, 1).Format("2006-01-02") {
-			out = append(out, k)
-		}
+		k = next
 	}
 	return out
 }
@@ -506,7 +518,7 @@ func filterDated(rows []map[string]any, from, to string) []map[string]any {
 // begins at the first remaining day: the later of the start date and the
 // first snapshot, or a backfilled day on or after the start date when #29
 // kept one. The picker uses that same first day as its lower bound.
-func projectAccount(handle string, acct map[string]any, spec rangeSpec, loc *time.Location, today string) {
+func projectAccount(handle string, acct map[string]any, spec rangeSpec, loc *time.Location, today, globalFloor string) {
 	hist, _ := acct["history"].([]map[string]any)
 	if hist == nil {
 		hist = []map[string]any{}
@@ -523,12 +535,18 @@ func projectAccount(handle string, acct map[string]any, spec rangeSpec, loc *tim
 	visFrom := spec.From
 	dataTo := spec.DataTo
 	slotTo := spec.To
-	if spec.Key == "all" {
-		visFrom = first
-		slotTo = dataTo
+	// floor is the first day this account can show. With no snapshots
+	// that is the start date, or the earliest day anyone can show, so a
+	// request for year 1 does not build slots back to 0001-01-01.
+	floor := first
+	if floor == "" {
+		floor = start
 	}
-	if first != "" && (visFrom == "" || first > visFrom) {
-		visFrom = first
+	if floor == "" {
+		floor = globalFloor
+	}
+	if spec.Key == "all" || visFrom == "" || (floor != "" && visFrom < floor) {
+		visFrom = floor
 	}
 	if spec.Key == "custom" || spec.Key == "all" {
 		slotTo = dataTo
@@ -620,20 +638,39 @@ func applyRangeView(out map[string]any, spec rangeSpec, loc *time.Location, toda
 	out["today"] = today
 	accts, _ := out["accounts"].(map[string]any)
 	earliest := ""
+	for _, raw := range accts {
+		acct, _ := raw.(map[string]any)
+		if acct == nil {
+			continue
+		}
+		hist, _ := acct["history"].([]map[string]any)
+		if len(hist) == 0 {
+			continue
+		}
+		if f, _ := hist[0]["date"].(string); f != "" && (earliest == "" || f < earliest) {
+			earliest = f
+		}
+	}
+	// globalFloor is the first day the response can start. A custom from
+	// of 0001-01-01 would otherwise count ~100k days and bucket by month.
+	globalFloor := earliest
+	if globalFloor == "" {
+		globalFloor = today
+	}
 	for handle, raw := range accts {
 		acct, _ := raw.(map[string]any)
 		if acct == nil {
 			continue
 		}
-		projectAccount(handle, acct, spec, loc, today)
-		if f, _ := acct["first"].(string); f != "" && (earliest == "" || f < earliest) {
-			earliest = f
-		}
+		projectAccount(handle, acct, spec, loc, today, globalFloor)
 	}
 	spanFrom, spanTo := spec.From, spec.DataTo
 	if spec.Key == "all" {
 		spanFrom = earliest
 		spanTo = today
+	}
+	if spanFrom == "" || spanFrom < globalFloor {
+		spanFrom = globalFloor
 	}
 	days := daysInclusive(spanFrom, spanTo)
 	bucket := "day"
@@ -652,10 +689,6 @@ func applyRangeView(out map[string]any, spec rangeSpec, loc *time.Location, toda
 	}
 	out["range"] = rng
 	if ct, ok := out["clickthroughs"].([]map[string]any); ok {
-		from := spec.From
-		if spec.Key == "all" {
-			from = earliest
-		}
-		out["clickthroughs"] = filterDated(ct, from, spec.DataTo)
+		out["clickthroughs"] = filterDated(ct, spanFrom, spec.DataTo)
 	}
 }
