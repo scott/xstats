@@ -6,6 +6,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 TMP=$(mktemp -d)
 ORIG_PATH=$PATH
 TOKEN=fake-ingest-token
+CALLER_TOKEN=caller-only-token
 DEPLOY_URL=https://stats.example.com
 CALLER_URL=http://127.0.0.1:8080
 cleanup() { rm -rf "$TMP"; }
@@ -14,7 +15,16 @@ trap cleanup EXIT
 mkdir -p "$TMP/bin" "$TMP/log" "$TMP/saved" "$TMP/home/.config/xstats"
 printf '%s\n' "$TOKEN" > "$TMP/home/.config/xstats/hourly_token"
 chmod 600 "$TMP/home/.config/xstats/hourly_token"
+printf '%s\n' "$CALLER_TOKEN" > "$TMP/caller_token"
+chmod 600 "$TMP/caller_token"
 printf '%s\n' '{"date":"2026-10-14"}' > "$TMP/bundle.json"
+# The readonly attribute is not part of the environment, so a child process
+# would see a normal FOO. bash sources BASH_ENV in push.sh's own process
+# before the script body, which is what makes FOO readonly inside push.sh.
+cat > "$TMP/readonly.bash" << 'EOF'
+readonly FOO=1
+export FOO
+EOF
 
 # $HOME stays literal here and expands when push.sh sources the file.
 cat > "$TMP/home/.config/xstats/deploy.env" << 'EOF'
@@ -36,7 +46,7 @@ exit 0
 EOF
 chmod +x "$TMP/bin/curl"
 
-redact() { sed "s/${TOKEN}/[redacted]/g"; }
+redact() { sed -e "s/${TOKEN}/[redacted]/g" -e "s/${CALLER_TOKEN}/[redacted]/g"; }
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -60,7 +70,13 @@ reset_logs() {
 
 # run_push runs push.sh with the curl stub first on PATH.
 # Extra KEY=VALUE arguments are the caller's command-line environment.
+# --readonly exports FOO and marks it readonly inside push.sh via BASH_ENV.
 run_push() {
+  local bash_env=""
+  if [ "${1:-}" = "--readonly" ]; then
+    bash_env=$TMP/readonly.bash
+    shift
+  fi
   reset_logs
   set +e
   (
@@ -68,6 +84,9 @@ run_push() {
     export HOME="$TMP/home"
     export STUB_LOG="$TMP/log"
     unset STATS_URL XSTATS_DEPLOY_ENV XSTATS_TOKEN_FILE CURL_EXTRA
+    if [ -n "$bash_env" ]; then
+      export BASH_ENV=$bash_env
+    fi
     if [ "$(command -v curl)" != "$TMP/bin/curl" ]; then
       printf 'refusing to run push.sh without the curl stub\n' >&2
       exit 1
@@ -101,7 +120,7 @@ assert_url() {
   fi
   got=$(tail -n 1 "$TMP/log/curl.args")
   case "$got" in
-    *"$TOKEN"*) fail "url argument contains the token" ;;
+    *"$TOKEN"*|*"$CALLER_TOKEN"*) fail "url argument contains the token" ;;
   esac
   if [ "$got" != "$expected" ]; then
     printf 'expected url %s\ngot url %s\n' "$expected" "$got" >&2
@@ -110,17 +129,21 @@ assert_url() {
 }
 
 assert_token_on_stdin() {
+  local needle=$1
   if [ ! -f "$TMP/log/curl.stdin" ]; then
     fail "curl did not receive a config on stdin"
   fi
   if ! grep -F -q -- 'header = "Authorization: Bearer ' "$TMP/log/curl.stdin"; then
     fail "curl stdin is not an Authorization config"
   fi
-  if ! grep -F -q -- "$TOKEN" "$TMP/log/curl.stdin"; then
+  if ! grep -F -q -- "$needle" "$TMP/log/curl.stdin"; then
     fail "token was not passed to curl on stdin"
   fi
   if ! grep -F -x -q -- '-K' "$TMP/log/curl.args" || ! grep -F -x -q -- '-' "$TMP/log/curl.args"; then
     fail "curl was not told to read its config from stdin"
+  fi
+  if grep -F -q -e "$TOKEN" -e "$CALLER_TOKEN" "$TMP/log/curl.args"; then
+    fail "token appeared in curl argv"
   fi
 }
 
@@ -131,7 +154,7 @@ if [ "$rc" -ne 0 ]; then
   fail "hourly job should post using deploy.env (exit $rc)"
 fi
 assert_url "$DEPLOY_URL/api/ingest"
-assert_token_on_stdin
+assert_token_on_stdin "$TOKEN"
 if [ -s "$TMP/stdout" ] || [ -s "$TMP/stderr" ]; then
   fail "hourly job wrote output"
 fi
@@ -145,7 +168,7 @@ if [ "$rc" -ne 0 ]; then
   fail "caller STATS_URL should win (exit $rc)"
 fi
 assert_url "$CALLER_URL/api/ingest"
-assert_token_on_stdin
+assert_token_on_stdin "$TOKEN"
 if grep -F -x -q -- "$DEPLOY_URL/api/ingest" "$TMP/log/curl.args"; then
   fail "caller run still posted to the deploy.env URL"
 fi
@@ -175,7 +198,7 @@ echo "curl: not run"
 
 echo "=== 4. fake token never appears in curl argv ==="
 for name in hourly caller; do
-  if grep -F -q -- "$TOKEN" "$TMP/saved/$name.args"; then
+  if grep -F -q -e "$TOKEN" -e "$CALLER_TOKEN" "$TMP/saved/$name.args"; then
     fail "token appeared in curl argv ($name)"
   fi
   if grep -F -q -e 'Authorization' -e 'Bearer' "$TMP/saved/$name.args"; then
@@ -183,9 +206,70 @@ for name in hourly caller; do
   fi
 done
 for name in hourly caller missing; do
-  if grep -F -q -- "$TOKEN" "$TMP/saved/$name.stdout" "$TMP/saved/$name.stderr"; then
+  if grep -F -q -e "$TOKEN" -e "$CALLER_TOKEN" "$TMP/saved/$name.stdout" "$TMP/saved/$name.stderr"; then
     fail "token appeared in push.sh output ($name)"
   fi
 done
 echo "token absent from curl argv and from push.sh output"
+
+echo "=== 5. exported readonly variable ==="
+run_push --readonly "STATS_URL=$CALLER_URL"
+save_run readonly
+if [ "$rc" -ne 0 ]; then
+  fail "readonly caller variable should not stop the post (exit $rc)"
+fi
+assert_url "$CALLER_URL/api/ingest"
+assert_token_on_stdin "$TOKEN"
+if [ -s "$TMP/stdout" ] || [ -s "$TMP/stderr" ]; then
+  fail "readonly run wrote output"
+fi
+echo "exit: $rc"
+echo "url: $CALLER_URL/api/ingest"
+
+echo "=== 6. empty STATS_URL counts as unset ==="
+run_push "STATS_URL="
+save_run empty
+if [ "$rc" -ne 0 ]; then
+  fail "empty STATS_URL should be filled from deploy.env (exit $rc)"
+fi
+assert_url "$DEPLOY_URL/api/ingest"
+assert_token_on_stdin "$TOKEN"
+if grep -F -x -q -- "$CALLER_URL/api/ingest" "$TMP/log/curl.args"; then
+  fail "empty STATS_URL posted to the caller URL"
+fi
+if [ -s "$TMP/stdout" ] || [ -s "$TMP/stderr" ]; then
+  fail "empty STATS_URL run wrote output"
+fi
+echo "exit: $rc"
+echo "url: $DEPLOY_URL/api/ingest"
+
+echo "=== 7. caller XSTATS_TOKEN_FILE wins over deploy.env ==="
+run_push "XSTATS_TOKEN_FILE=$TMP/caller_token"
+save_run tokenfile
+if [ "$rc" -ne 0 ]; then
+  fail "caller XSTATS_TOKEN_FILE should win (exit $rc)"
+fi
+assert_url "$DEPLOY_URL/api/ingest"
+assert_token_on_stdin "$CALLER_TOKEN"
+if grep -F -q -- "$TOKEN" "$TMP/log/curl.stdin"; then
+  fail "stdin held the deploy.env token"
+fi
+if [ -s "$TMP/stdout" ] || [ -s "$TMP/stderr" ]; then
+  fail "caller token-file run wrote output"
+fi
+echo "exit: $rc"
+echo "url: $DEPLOY_URL/api/ingest"
+echo "stdin: caller token"
+
+for name in readonly empty tokenfile; do
+  if grep -F -q -e "$TOKEN" -e "$CALLER_TOKEN" "$TMP/saved/$name.args"; then
+    fail "token appeared in curl argv ($name)"
+  fi
+  if grep -F -q -e 'Authorization' -e 'Bearer' "$TMP/saved/$name.args"; then
+    fail "Authorization was passed on curl argv ($name)"
+  fi
+  if grep -F -q -e "$TOKEN" -e "$CALLER_TOKEN" "$TMP/saved/$name.stdout" "$TMP/saved/$name.stderr"; then
+    fail "token appeared in push.sh output ($name)"
+  fi
+done
 echo "ok"
