@@ -88,8 +88,8 @@ const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&qu
 let HANDLES=[];let D,cur=new URLSearchParams(location.search).get('acct')||localStorage.getItem('acct')||HANDLES[0];
 function setTheme(t){document.documentElement.dataset.theme=t;localStorage.setItem('theme',t);$('tt').textContent=t==='dark'?'\u2600':'\u263E'}
 $('tt').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');setTheme(document.documentElement.dataset.theme);
-function dlt(h,days){if(h.length<2)return null;const last=h[h.length-1],cut=new Date(last.date);cut.setDate(cut.getDate()-days);
- let base=h[0];for(const s of h)if(new Date(s.date)<=cut)base=s;return last.followers-base.followers}
+function dlt(h,days){const snaps=h.filter(s=>typeof s.followers==='number');if(snaps.length<2)return null;const last=snaps[snaps.length-1],cut=new Date(last.date);cut.setDate(cut.getDate()-days);
+ let base=snaps[0];for(const s of snaps)if(new Date(s.date)<=cut)base=s;return last.followers-base.followers}
 function sign(v){return v==null?'<span class="sub">n/a</span>':`<span class="${v<0?'down':'up'}">${v>0?'+':''}${fmt(v)}</span>`}
 const EROWS=[['comments','Comments'],['new_followers','New followers'],['reshares','Reshares'],['likes','Likes']];
 function f1(n){const v=Math.round(n*10)/10;return (v===0?0:v).toFixed(1)}
@@ -107,7 +107,8 @@ function tipHTML(e,date){
  let top='';if(e.top_post&&e.top_post.url)top=`<div class="sub" style="margin-top:4px">Top post: <a href="${esc(e.top_post.url)}" target="_blank" rel="noopener">${esc(shortText(e.top_post.text))}</a></div>`;
  const num=scored?fmt(Math.round(e.score)):'\u2014';
  const color=scored&&e.score<0?'var(--down)':'var(--bar)';
- return `<div class="lbl">${esc(head)}</div><div class="sc"><b style="color:${color}">${num}</b><span class="sub">${scored?'points':'no score'}</span>${delta}</div>${rows}<div class="ft sub">${impr} impressions</div>${top}`}
+ const note=e.backfilled?'<div class="sub" style="margin:2px 0 8px">followers not tracked yet</div>':'';
+ return `<div class="lbl">${esc(head)}</div><div class="sc"><b style="color:${color}">${num}</b><span class="sub">${scored?'points':'no score'}</span>${delta}</div>${note}${rows}<div class="ft sub">${impr} impressions</div>${top}`}
 function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||(innerWidth<820?30:15);const W=opts.W||800,H=opts.H||220,P=opts.W?28:40,B=opts.bars||null,PR=B?(fs>20?78:46):10;if(!h.length)return '<div class="empty">No snapshots yet.</div>';
  const finite=v=>typeof v==='number'&&Number.isFinite(v),ys=h.map(s=>s[key]).filter(finite);if(!ys.length)return '<div class="empty">No data yet.</div>';
  const mn=Math.min(...ys),mx=Math.max(...ys),r=Math.max(mx-mn,4),lo=mn-r*.25,hi=mx+r*.25;
@@ -126,10 +127,13 @@ function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||
  let g='';
  const xGrid=B?W-PR:W,st=Math.max(1,Math.ceil((hi-lo)/4));for(let v=Math.max(0,Math.ceil(lo/st)*st);v<=hi;v+=st){const yy=y(v);g+=`<line x1="${PL}" x2="${xGrid}" y1="${yy}" y2="${yy}" stroke="var(--grid)"/><text x="${B?PL-8:0}" y="${yy+4}" text-anchor="${B?'end':'start'}" fill="var(--mut)" font-size="${fs}">${fmt(v)}</text>`}
  const allKnown=h.every(s=>finite(s[key]));
+ const firstKnown=h.findIndex(s=>finite(s[key]));
+ const knownTail=firstKnown>=0&&h.slice(firstKnown).every(s=>finite(s[key]));
  let line='',lp;
- if(allKnown){
-  const pts=h.map((s,i)=>`${x(i).toFixed(1)},${y(s[key]).toFixed(1)}`);
-  line=h.length>1?`<path d="M${pts.join(' L')} L${x(h.length-1)},${H} L${x(0)},${H}Z" fill="url(#gr${key})"/><path d="M${pts.join(' L')}" fill="none" stroke="var(--acc)" stroke-width="2.5"/>`:'';
+ if(allKnown||(B&&knownTail&&firstKnown>0)){
+  const start=allKnown?0:firstKnown,slice=h.slice(start);
+  const pts=slice.map((s,i)=>`${x(start+i).toFixed(1)},${y(s[key]).toFixed(1)}`);
+  line=pts.length>1?`<path d="M${pts.join(' L')} L${x(start+pts.length-1)},${H} L${x(start)},${H}Z" fill="url(#gr${key})"/><path d="M${pts.join(' L')}" fill="none" stroke="var(--acc)" stroke-width="2.5"/>`:'';
   lp=pts[pts.length-1].split(',');
  }else{
   let d='',pen=false,last='';
@@ -146,21 +150,22 @@ function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||
    const step=Math.max(1,(n<=1?1:n<=2?2:n<=5?5:10)*pow);
    const smax=Math.ceil(max/step)*step,yb=v=>(H-20)-(H*.48)*v/smax;
    for(let i=0;i<nDays;i++){const ds=iso(new Date(t0.getFullYear(),t0.getMonth(),t0.getDate()+i)),row=byDate[ds],v=row?row.v:null;if(!(v>0))continue;
-    const cx=PL+slot*(i+0.5),bh=Math.max(0,H-20-yb(v));
-    bars+=`<rect class="bar" data-date="${ds}" x="${(cx-bw/2).toFixed(1)}" y="${yb(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="var(--bar)" fill-opacity="0.38" pointer-events="none"/>`}
+    const cx=PL+slot*(i+0.5),bh=Math.max(0,H-20-yb(v)),bf=!!(row.s.engagement&&row.s.engagement.backfilled);
+    bars+=`<rect class="bar" data-date="${ds}" data-bf="${bf?1:0}" x="${(cx-bw/2).toFixed(1)}" y="${yb(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="${bf?'var(--mut)':'var(--bar)'}" fill-opacity="${bf?'0.45':'0.38'}" pointer-events="none"/>`}
    ax2+=`<text x="${W-2}" y="${Math.max(12,(yb(smax)-fs)).toFixed(1)}" text-anchor="end" fill="var(--bar)" font-size="${fs}" pointer-events="none">points</text>`;
    const nTicks=Math.round(smax/step);for(let i=0;i<=nTicks;i++){const rv=i*step;ax2+=`<text x="${W-2}" y="${(yb(rv)+4).toFixed(1)}" text-anchor="end" fill="var(--bar)" font-size="${fs}" pointer-events="none">${fmt(rv)}</text>`}}
   guide=`<line class="gline" y1="12" y2="${H-20}" stroke="var(--mut)" stroke-dasharray="3 3" stroke-opacity=".6" visibility="hidden" pointer-events="none"/>`;
   halo=`<circle class="ghalo" r="4.5" fill="var(--bg)" stroke="var(--acc)" stroke-width="2.5" visibility="hidden" pointer-events="none"/>`;
   for(let i=0;i<nDays;i++){const ds=iso(new Date(t0.getFullYear(),t0.getMonth(),t0.getDate()+i)),row=byDate[ds],cx=PL+slot*(i+0.5);
-   hits+=`<rect class="hit" data-date="${ds}" data-x="${cx.toFixed(1)}" data-y="${row?y(row.s[key]).toFixed(1):''}" data-snap="${row?1:0}" width="0" height="0"/>`}
+   const yv=row&&finite(row.s[key])?y(row.s[key]).toFixed(1):'';
+   hits+=`<rect class="hit" data-date="${ds}" data-x="${cx.toFixed(1)}" data-y="${yv}" data-snap="${row?1:0}" width="0" height="0"/>`}
   hits+=`<rect class="plot" x="0" y="0" width="${W}" height="${H}" fill="transparent"/>`}
  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;margin-top:10px${B?';cursor:pointer':''}" role="img" aria-label="${B?'Follower growth and daily engagement score':'Chart'}"><defs><linearGradient id="gr${key}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--acc)" stop-opacity=".4"/><stop offset="1" stop-color="var(--acc)" stop-opacity="0"/></linearGradient></defs>${g}${bars}${ax2}${line}<circle cx="${lp[0]}" cy="${lp[1]}" r="5" fill="var(--acc)" pointer-events="none"/>${guide}${halo}${hits}</svg>
  <div class="sub" style="display:flex;justify-content:space-between"><span>${h[0].date}</span><span>${dl(h[h.length-1].date)}</span></div>
- ${h.length<2&&!opts.quiet?'<div class="empty">First snapshot taken '+h[0].date+'. The growth line fills in as daily snapshots run.</div>':''}`}
+ ${h.filter(s=>finite(s[key])).length===1&&!opts.quiet?'<div class="empty">First snapshot taken '+h.filter(s=>finite(s[key]))[0].date+'. The growth line fills in as daily snapshots run.</div>':''}`}
 function hideTip(){const tip=$('tip');if(tip){tip.hidden=true;tip.dataset.pin='';tip.style.pointerEvents='none'}
  const svg=$('chart')&&$('chart').querySelector('svg');if(!svg)return;
- svg.querySelectorAll('.bar').forEach(r=>r.setAttribute('fill-opacity','0.38'));
+ svg.querySelectorAll('.bar').forEach(r=>r.setAttribute('fill-opacity',r.dataset.bf==='1'?'0.45':'0.38'));
  const gl=svg.querySelector('.gline'),gh=svg.querySelector('.ghalo');
  if(gl)gl.setAttribute('visibility','hidden');if(gh)gh.setAttribute('visibility','hidden')}
 function bindTip(h){const root=$('chart'),svg=root.querySelector('svg');if(!svg)return;
@@ -170,7 +175,7 @@ function bindTip(h){const root=$('chart'),svg=root.querySelector('svg');if(!svg)
  const vb=svg.viewBox.baseVal.width||800;
  const idxFrom=e=>{const r=svg.getBoundingClientRect();if(!r.width)return -1;const x=(e.clientX-r.left)*(vb/r.width);let best=0,bd=1e9;hits.forEach((el,i)=>{const d=Math.abs(+el.dataset.x-x);if(d<bd){bd=d;best=i}});return best};
  const highlight=(i,haloOn)=>{const date=hits[i].dataset.date;
-  svg.querySelectorAll('.bar').forEach(r=>r.setAttribute('fill-opacity',r.dataset.date===date?'0.95':'0.38'));
+  svg.querySelectorAll('.bar').forEach(r=>r.setAttribute('fill-opacity',r.dataset.date===date?(r.dataset.bf==='1'?'0.9':'0.95'):(r.dataset.bf==='1'?'0.45':'0.38')));
   const el=hits[i],gl=svg.querySelector('.gline'),gh=svg.querySelector('.ghalo');
   if(gl){gl.setAttribute('x1',el.dataset.x);gl.setAttribute('x2',el.dataset.x);gl.setAttribute('visibility','visible')}
   if(gh){if(haloOn&&el.dataset.y){gh.setAttribute('cx',el.dataset.x);gh.setAttribute('cy',el.dataset.y);gh.setAttribute('visibility','visible')}else gh.setAttribute('visibility','hidden')}};

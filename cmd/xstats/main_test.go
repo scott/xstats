@@ -204,7 +204,8 @@ func TestAggregateDays(t *testing.T) {
 		// 05:30Z on Sep 5 is 23:30 MT on Sep 4, so this stays on the Sep 4 snapshot.
 		{ID: "p4", Text: "offset", CreatedAt: "2026-09-05T05:30:00Z", Impressions: ip(500), Likes: 5},
 		{ID: "skip", Text: "bad", CreatedAt: "", Impressions: ip(99999), Likes: 99999},
-		{ID: "old", Text: "unaligned", CreatedAt: "2026-08-01T12:00:00Z", Impressions: ip(99999), Likes: 99999},
+		// After tracking has started, a post on a day with no snapshot is still left out.
+		{ID: "old", Text: "unaligned", CreatedAt: "2026-09-06T12:00:00Z", Impressions: ip(99999), Likes: 99999},
 		{ID: "p5", Text: "latest", CreatedAt: "2026-09-10T12:00:00Z", Impressions: ip(4000), Likes: 16},
 	}
 	loc := denver(t)
@@ -214,7 +215,7 @@ func TestAggregateDays(t *testing.T) {
 	}
 
 	d0 := got[0]
-	if d0.NewFollowers != 0 || d0.Score == nil || *d0.Score != 50 || d0.Points != 50 || d0.InProgress {
+	if !nfIs(d0.NewFollowers, 0) || d0.Score == nil || *d0.Score != 50 || d0.Points != 50 || d0.InProgress || d0.Backfilled {
 		t.Fatalf("first day: %+v score %v", d0, scoreOr(d0.Score))
 	}
 	if d0.ScoreDelta != nil {
@@ -223,7 +224,7 @@ func TestAggregateDays(t *testing.T) {
 
 	d1 := got[1]
 	wantQuiet := dayLevelPoints(1, -10, 0, 4)
-	if d1.NewFollowers != -10 || !imprIs(d1.Impressions, 0) || d1.Score == nil || *d1.Score != float64(wantQuiet) || d1.Points != wantQuiet {
+	if !nfIs(d1.NewFollowers, -10) || !imprIs(d1.Impressions, 0) || d1.Score == nil || *d1.Score != float64(wantQuiet) || d1.Points != wantQuiet {
 		t.Fatalf("zero impressions: %+v score %v", d1, scoreOr(d1.Score))
 	}
 	if d1.ScoreDelta == nil || math.Abs(*d1.ScoreDelta-float64(wantQuiet-50)) > 1e-9 {
@@ -283,7 +284,7 @@ func TestNegativeScore(t *testing.T) {
 	posts := []scoredPost{{ID: "1", CreatedAt: "2026-10-02T18:00:00Z", Impressions: ip(500)}}
 	got := aggregateDays(hist, posts, "2026-01-01", denver(t))
 	wantPts := dayLevelPoints(0, -10, 0, 0)
-	if got[1].NewFollowers != -10 || got[1].Points != wantPts || got[1].Score == nil || *got[1].Score != float64(wantPts) {
+	if !nfIs(got[1].NewFollowers, -10) || got[1].Points != wantPts || got[1].Score == nil || *got[1].Score != float64(wantPts) {
 		t.Fatalf("negative: %+v score %v", got[1], scoreOr(got[1].Score))
 	}
 	// impressions/1000 would have turned -40 into -80.
@@ -302,6 +303,8 @@ func scoreOr(p *float64) any {
 func ip(n int) *int { return &n }
 
 func imprIs(p *int, n int) bool { return p != nil && *p == n }
+
+func nfIs(p *int, n int) bool { return p != nil && *p == n }
 
 func TestNullImpressionsExcludedFromTotal(t *testing.T) {
 	hist := []histDay{{Date: "2026-10-01", Followers: 10}}
@@ -683,6 +686,9 @@ func TestPageMarksEngagement(t *testing.T) {
 	if strings.Contains(body, "No bar: this day has 0 impressions.") {
 		t.Fatal("zero-impressions explanation must not ship")
 	}
+	if !strings.Contains(body, "followers not tracked yet") || !strings.Contains(body, "data-bf") {
+		t.Fatal("backfilled hover note or muted bar marker missing")
+	}
 	if strings.Contains(body, "e.impressions?compact(e.impressions):'0'") {
 		t.Fatal("missing impressions still render as 0")
 	}
@@ -718,5 +724,177 @@ func TestEveningMountainTime(t *testing.T) {
 	// The next snapshot has no posts. Its score is the follower change only.
 	if got[1].InProgress || got[1].Likes != 0 || !imprIs(got[1].Impressions, 0) || got[1].Score == nil || *got[1].Score != 8 || got[1].Points != 8 {
 		t.Fatalf("next utc day %+v score %v", got[1], scoreOr(got[1].Score))
+	}
+}
+
+// Posts before the first snapshot extend the chart. Their follower change is
+// unknown, the score has no follower term, and they are not part of any
+// 7-day average. The first snapshot still starts at new_followers 0.
+func TestBackfilledDaysBeforeFirstSnapshot(t *testing.T) {
+	loc := denver(t)
+	hist := []histDay{
+		{Date: "2026-10-10", Followers: 100},
+		{Date: "2026-10-11", Followers: 110},
+		{Date: "2026-10-18", Followers: 112},
+	}
+	posts := []scoredPost{
+		// 05:30Z is still Oct 7 in Denver, the same bucketing as snapshot days.
+		{ID: "eve", Text: "evening", CreatedAt: "2026-10-08T05:30:00Z", Impressions: ip(20), Likes: 1},
+		{ID: "arc", Text: "archive", CreatedAt: "2026-10-08T18:00:00Z", Impressions: ip(50), Likes: 4, Replies: ip(2), Reposts: 3},
+		{ID: "launch", Text: "launch", CreatedAt: "2026-10-10T18:00:00Z", Impressions: ip(10), Likes: 1},
+		{ID: "next", Text: "next", CreatedAt: "2026-10-11T18:00:00Z", Likes: 2},
+		// After tracking has started, a day with no snapshot is still omitted.
+		{ID: "gap", Text: "gap", CreatedAt: "2026-10-12T18:00:00Z", Likes: 50},
+	}
+	got := aggregateDays(hist, posts, "2026-10-18", loc)
+	if len(got) != 5 {
+		t.Fatalf("len %d", len(got))
+	}
+	wantDates := []string{"2026-10-07", "2026-10-08", "2026-10-10", "2026-10-11", "2026-10-18"}
+	for i, d := range wantDates {
+		if got[i].Date != d {
+			t.Fatalf("day %d %s", i, got[i].Date)
+		}
+	}
+	early := got[0]
+	if !early.Backfilled || early.NewFollowers != nil || early.ScoreDelta != nil || early.InProgress {
+		t.Fatalf("early backfill %+v", early)
+	}
+	if early.Likes != 1 || !imprIs(early.Impressions, 20) || early.Score == nil || *early.Score != 1 || early.Points != 1 {
+		t.Fatalf("early score %+v %v", early, scoreOr(early.Score))
+	}
+	arc := got[1]
+	wantPartial := postLevelPoints(2, 3, 4)
+	if !arc.Backfilled || arc.NewFollowers != nil || arc.ScoreDelta != nil {
+		t.Fatalf("archive flags %+v", arc)
+	}
+	if !nfIs(arc.Comments, 2) || arc.Reshares != 3 || arc.Likes != 4 || !imprIs(arc.Impressions, 50) || arc.Points != wantPartial || arc.Score == nil || *arc.Score != float64(wantPartial) {
+		t.Fatalf("archive partial %+v score %v", arc, scoreOr(arc.Score))
+	}
+	if arc.Top == nil || arc.Top.ID != "arc" || arc.Top.Points != wantPartial {
+		t.Fatalf("archive top %+v", arc.Top)
+	}
+	// A follower term of 0 would be the same number. Guard the weights used.
+	if wantPartial != weightComments*2+weightReshares*3+weightLikes*4 || wantPartial == dayLevelPoints(2, 1, 3, 4) {
+		t.Fatalf("partial formula %d", wantPartial)
+	}
+
+	first := got[2]
+	if first.Backfilled || !nfIs(first.NewFollowers, 0) || first.Score == nil || *first.Score != 1 || first.Points != 1 || first.ScoreDelta != nil {
+		t.Fatalf("first snapshot %+v delta %v", first, scoreOr(first.ScoreDelta))
+	}
+	// Oct 11's window holds both backfilled days and the first snapshot.
+	// Including the backfilled scores would average (1+16+1)/3 = 6, delta 36.
+	second := got[3]
+	if second.Backfilled || !nfIs(second.NewFollowers, 10) || second.Score == nil || *second.Score != 42 || second.Points != 42 {
+		t.Fatalf("second %+v score %v", second, scoreOr(second.Score))
+	}
+	if second.ScoreDelta == nil || math.Abs(*second.ScoreDelta-(42-1)) > 1e-9 {
+		t.Fatalf("second delta %v", scoreOr(second.ScoreDelta))
+	}
+	last := got[4]
+	if last.Backfilled || !last.InProgress || !nfIs(last.NewFollowers, 2) || !imprIs(last.Impressions, 0) || last.Likes != 0 || last.Score == nil || *last.Score != 8 {
+		t.Fatalf("last %+v score %v", last, scoreOr(last.Score))
+	}
+	// Oct 12's likes are not on this day, and Oct 7-8 are outside the window.
+	if last.ScoreDelta == nil || math.Abs(*last.ScoreDelta-(8-42)) > 1e-9 {
+		t.Fatalf("last delta %v", scoreOr(last.ScoreDelta))
+	}
+}
+
+func TestBackfilledEngagementAPI(t *testing.T) {
+	t.Setenv("XSTATS_TZ", "UTC")
+	mux, ing := testDB(t)
+	user := func(followers int) string {
+		return `{"id":"1","username":"demo","name":"Demo","public_metrics":{"followers_count":` + itoaN(followers) + `,"following_count":2,"tweet_count":3}}`
+	}
+	ing("d10.json", `{"date":"2026-10-10","accounts":{"demo":{"user":`+user(100)+`,"posts":[
+		{"id":"800","text":"from the archive","created_at":"2026-10-08T18:00:00Z","public_metrics":{"impression_count":40,"like_count":1,"reply_count":1,"retweet_count":0,"quote_count":0}},
+		{"id":"100","text":"launch","created_at":"2026-10-10T18:00:00Z","public_metrics":{"impression_count":10,"like_count":1,"reply_count":0,"retweet_count":0,"quote_count":0}}
+	]}}}`)
+	ing("d11.json", `{"date":"2026-10-11","accounts":{"demo":{"user":`+user(110)+`,"posts":[
+		{"id":"800","text":"from the archive","created_at":"2026-10-08T18:00:00Z","public_metrics":{"impression_count":50,"like_count":4,"reply_count":2,"retweet_count":1,"quote_count":2}},
+		{"id":"110","text":"next day","created_at":"2026-10-11T18:00:00Z","public_metrics":{"like_count":2,"reply_count":0,"retweet_count":0,"quote_count":0}}
+	]}}}`)
+	root := apiRoot(t, mux)
+	hist := root["accounts"].(map[string]any)["demo"].(map[string]any)["history"].([]any)
+	if len(hist) != 3 {
+		t.Fatalf("history len %d", len(hist))
+	}
+	dates := []string{"2026-10-08", "2026-10-10", "2026-10-11"}
+	for i, d := range dates {
+		if hist[i].(map[string]any)["date"] != d {
+			t.Fatalf("order %v", hist[i].(map[string]any)["date"])
+		}
+	}
+	rowB, eB := histEng(t, root, "demo", "2026-10-08")
+	if _, ok := eB["new_followers"]; !ok || eB["new_followers"] != nil || eB["backfilled"] != true {
+		t.Fatalf("backfilled followers %#v flag %#v", eB["new_followers"], eB["backfilled"])
+	}
+	// Latest snapshot of the archive post: 3*2 + 2*3 + 4 = 16. No follower term.
+	if asInt(eB["comments"]) != 2 || asInt(eB["reshares"]) != 3 || asInt(eB["likes"]) != 4 || asInt(eB["score"]) != 16 || asInt(eB["points"]) != 16 || asInt(eB["impressions"]) != 50 {
+		t.Fatalf("partial score %+v", eB)
+	}
+	if eB["score_delta"] != nil || eB["in_progress"] == true {
+		t.Fatalf("backfilled delta %#v", eB["score_delta"])
+	}
+	if rowB["followers"] != nil || rowB["following"] != nil || rowB["posts"] != nil {
+		t.Fatalf("backfilled row has a snapshot: %+v", rowB)
+	}
+	row0, e0 := histEng(t, root, "demo", "2026-10-10")
+	if asInt(row0["followers"]) != 100 || e0["backfilled"] != false || asInt(e0["new_followers"]) != 0 || asInt(e0["score"]) != 1 || e0["score_delta"] != nil {
+		t.Fatalf("first snapshot %+v row %+v", e0, row0)
+	}
+	_, e1 := histEng(t, root, "demo", "2026-10-11")
+	if e1["backfilled"] != false || asInt(e1["new_followers"]) != 10 || asInt(e1["score"]) != 42 {
+		t.Fatalf("second snapshot %+v", e1)
+	}
+	delta, ok := asF(t, e1["score_delta"])
+	if !ok || math.Abs(delta-(42-1)) > 1e-9 {
+		t.Fatalf("delta %#v", e1["score_delta"])
+	}
+}
+
+// A range whose posts all fall on snapshot days keeps the same days, scores,
+// and follower deltas as before backfilled days existed.
+func TestAllSnapshotRangeUnchanged(t *testing.T) {
+	hist := []histDay{
+		{Date: "2026-11-01", Followers: 20},
+		{Date: "2026-11-02", Followers: 25},
+		{Date: "2026-11-04", Followers: 25},
+	}
+	posts := []scoredPost{
+		{ID: "a", Text: "a", CreatedAt: "2026-11-01T16:00:00Z", Impressions: ip(100), Likes: 4, Replies: ip(1), Reposts: 2},
+		{ID: "b", Text: "b", CreatedAt: "2026-11-04T16:00:00Z", Impressions: ip(40), Likes: 3},
+	}
+	got := aggregateDays(hist, posts, "2026-11-04", denver(t))
+	if len(got) != len(hist) {
+		t.Fatalf("len %d", len(got))
+	}
+	wantPts := []int{
+		dayLevelPoints(1, 0, 2, 4),
+		dayLevelPoints(0, 5, 0, 0),
+		dayLevelPoints(0, 0, 0, 3),
+	}
+	for i, want := range wantPts {
+		e := got[i]
+		if e.Date != hist[i].Date || e.Backfilled || e.NewFollowers == nil || e.Score == nil || *e.Score != float64(want) || e.Points != want {
+			t.Fatalf("day %s %+v score %v", e.Date, e, scoreOr(e.Score))
+		}
+	}
+	if !nfIs(got[0].NewFollowers, 0) || got[0].ScoreDelta != nil || !imprIs(got[0].Impressions, 100) {
+		t.Fatalf("first %+v", got[0])
+	}
+	if !nfIs(got[1].NewFollowers, 5) || !imprIs(got[1].Impressions, 0) || got[1].Likes != 0 {
+		t.Fatalf("empty day %+v", got[1])
+	}
+	d1 := *got[1].Score - *got[0].Score
+	if got[1].ScoreDelta == nil || math.Abs(*got[1].ScoreDelta-d1) > 1e-9 {
+		t.Fatalf("d1 delta %v", scoreOr(got[1].ScoreDelta))
+	}
+	// Nov 4's window is [Oct 28, Nov 4): both earlier snapshots, not a gap day.
+	avg := (*got[0].Score + *got[1].Score) / 2
+	if !got[2].InProgress || !nfIs(got[2].NewFollowers, 0) || !imprIs(got[2].Impressions, 40) || got[2].ScoreDelta == nil || math.Abs(*got[2].ScoreDelta-(*got[2].Score-avg)) > 1e-9 {
+		t.Fatalf("last %+v delta %v", got[2], scoreOr(got[2].ScoreDelta))
 	}
 }
