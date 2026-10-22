@@ -122,7 +122,7 @@ tr.pr{cursor:pointer}tr.pr:hover td{background:color-mix(in srgb,var(--acc) 6%,t
  <div class="side">
   <div class="card"><div class="lbl">Followers</div><div class="big" id="fc">-</div>
    <div id="delta" class="sub"></div>
-   <div class="mini"><div><span class="lbl">Score</span><b id="d7">-</b></div><div><span class="lbl">Following</span><b id="fg">-</b></div><div><span class="lbl">Posts</span><b id="pc">-</b></div></div>
+   <div class="mini"><div><span class="lbl">7d</span><b id="d7">-</b></div><div><span class="lbl">Following</span><b id="fg">-</b></div><div><span class="lbl">Posts</span><b id="pc">-</b></div></div>
    <div class="sub" style="margin-top:18px" id="snap"></div></div>
   <div class="card" id="ctc"><div class="lbl">Clickthroughs from X</div><div id="ct"></div></div>
  </div>
@@ -158,6 +158,8 @@ const addM=(m,n)=>{const q=m.split('-');return isoD(new Date(Date.UTC(+q[0],+q[1
 function setTheme(t){document.documentElement.dataset.theme=t;localStorage.setItem('theme',t);$('tt').textContent=t==='dark'?'\u2600':'\u263E'}
 $('tt').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');setTheme(document.documentElement.dataset.theme);
 function sign(v){return v==null?'<span class="sub">n/a</span>':`<span class="${v<0?'down':'up'}">${v>0?'+':''}${fmt(v)}</span>`}
+function dlt(h,days){const snaps=h.filter(s=>typeof s.followers==='number');if(snaps.length<2)return null;const last=snaps[snaps.length-1],cut=new Date(last.date);cut.setDate(cut.getDate()-days);
+ let base=snaps[0];for(const s of snaps)if(new Date(s.date)<=cut)base=s;return last.followers-base.followers}
 const EROWS=[['comments','Comments'],['new_followers','New followers'],['reshares','Reshares'],['likes','Likes']];
 function f1(n){const v=Math.round(n*10)/10;return (v===0?0:v).toFixed(1)}
 function trim1(n){const s=f1(n);return s.endsWith('.0')?s.slice(0,-2):s}
@@ -321,7 +323,7 @@ function render(){const a=D.accounts[cur];if(!a){$('fc').textContent='No data';r
  if(!a.first){$('fc').textContent='-';$('fg').textContent='-';$('pc').textContent='-';$('delta').innerHTML='';$('d7').innerHTML='-';$('snap').textContent='No follower snapshot yet';$('gb').textContent='';$('chl').textContent='Follower growth';$('lgd').style.display='';$('chart').innerHTML='<div class="empty">No follower snapshots yet.</div>'}
  else{$('fc').textContent=fmt(a.followers);$('fg').textContent=fmt(a.following);$('pc').textContent=fmt(a.post_count);
   $('delta').innerHTML=deltaHTML(a);
-  $('d7').innerHTML=`<span style="color:var(--bar)">${compact(Math.round(a.score||0))}</span>`;
+  $('d7').innerHTML=sign(dlt(a.d7_snaps||[],7));
   $('snap').textContent=a.last_snapshot?'Last snapshot: '+dl(a.last_snapshot):'No follower snapshot yet';
   $('gb').textContent=single?'':'By '+bk;
   $('chl').textContent=single?'Engagement breakdown':'Follower growth';$('lgd').style.display=single?'none':'';
