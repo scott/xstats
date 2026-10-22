@@ -24,7 +24,7 @@ var webFS embed.FS
 const schema = `
 CREATE TABLE IF NOT EXISTS accounts(handle TEXT PRIMARY KEY, user_id TEXT, name TEXT, avatar TEXT);
 CREATE TABLE IF NOT EXISTS follower_snapshots(account TEXT, date TEXT, followers INT, following INT, posts INT, PRIMARY KEY(account,date));
-CREATE TABLE IF NOT EXISTS post_metrics(post_id TEXT, account TEXT, date TEXT, text TEXT, created_at TEXT, impressions INT, likes INT, replies INT, reposts INT, PRIMARY KEY(post_id,date));
+CREATE TABLE IF NOT EXISTS post_metrics(post_id TEXT, account TEXT, date TEXT, text TEXT, created_at TEXT, impressions INT, likes INT, replies INT, reposts INT, source TEXT NOT NULL DEFAULT 'live', PRIMARY KEY(post_id,date));
 CREATE TABLE IF NOT EXISTS clickthroughs(date TEXT PRIMARY KEY, visits INT);`
 
 func openDB(p string) *sql.DB {
@@ -43,7 +43,59 @@ func openDB(p string) *sql.DB {
 	if err := migrateImpressions(db); err != nil {
 		log.Fatal(err)
 	}
+	// replies has always been INT without NOT NULL. Existing 0s stay 0.
+	// Archive imports store NULL for an unknown count and do not rewrite rows.
+	if err := migrateReplies(db); err != nil {
+		log.Fatal(err)
+	}
+	// Existing rows have no source column. They are live snapshots.
+	if err := migrateSource(db); err != nil {
+		log.Fatal(err)
+	}
 	return db
+}
+
+// migrateReplies confirms post_metrics.replies can store NULL.
+// Databases created by this app already can. Rows are not copied or updated.
+func migrateReplies(db *sql.DB) error {
+	var notnull int
+	err := db.QueryRow(`SELECT "notnull" FROM pragma_table_info('post_metrics') WHERE name='replies'`).Scan(&notnull)
+	if err != nil {
+		return fmt.Errorf("post_metrics.replies: %w", err)
+	}
+	if notnull != 0 {
+		return fmt.Errorf("post_metrics.replies is NOT NULL")
+	}
+	return nil
+}
+
+// migrateSource adds post_metrics.source when a database was created before
+// archive import. The default marks every existing row as live, so an archive
+// import cannot overwrite it. A second startup finds the column and does nothing.
+func migrateSource(db *sql.DB) error {
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('post_metrics') WHERE name='source'`).Scan(&n); err != nil {
+		return fmt.Errorf("post_metrics.source: %w", err)
+	}
+	if n > 0 {
+		return nil
+	}
+	if _, err := db.Exec(`ALTER TABLE post_metrics ADD COLUMN source TEXT NOT NULL DEFAULT 'live'`); err != nil {
+		return fmt.Errorf("post_metrics.source: %w", err)
+	}
+	return nil
+}
+
+// preferLiveDateSQL is the snapshot date to show for the post_metrics alias m.
+// Any live row outranks every archive row, then the newest date wins.
+// Archive rows are dated the import day, so MAX(date) alone would let today's
+// import hide an older live snapshot.
+func preferLiveDateSQL(accountScoped bool) string {
+	q := `SELECT p.date FROM post_metrics p WHERE p.post_id=m.post_id`
+	if accountScoped {
+		q += ` AND p.account=m.account`
+	}
+	return q + ` ORDER BY CASE WHEN COALESCE(p.source,'live')='live' THEN 0 ELSE 1 END, p.date DESC LIMIT 1`
 }
 
 // migrateImpressions confirms post_metrics.impressions can store NULL.
@@ -122,10 +174,11 @@ func ingestBytes(db *sql.DB, b []byte) error {
 		if _, err := tx.Exec(`INSERT INTO follower_snapshots VALUES(?,?,?,?,?) ON CONFLICT(account,date) DO UPDATE SET followers=excluded.followers,following=excluded.following,posts=excluded.posts`, h, r.Date, u.PM.Followers, u.PM.Following, u.PM.Tweets); err != nil {
 			return err
 		}
-		// Re-pushing a date fully replaces that account's post rows for the date.
-		// An empty posts list is treated as "no data" and leaves existing rows alone.
+		// Re-pushing a date replaces that account's live rows for the date.
+		// Archive rows are left in place. An empty posts list is "no data"
+		// and leaves existing rows alone.
 		if len(a.Posts) > 0 {
-			if _, err := tx.Exec(`DELETE FROM post_metrics WHERE account=? AND date=?`, h, r.Date); err != nil {
+			if _, err := tx.Exec(`DELETE FROM post_metrics WHERE account=? AND date=? AND COALESCE(source,'live')='live'`, h, r.Date); err != nil {
 				return err
 			}
 		}
@@ -137,8 +190,10 @@ func ingestBytes(db *sql.DB, b []byte) error {
 			if strings.HasPrefix(p.Text, "@") || p.InReplyTo != "" {
 				reply = 1
 			}
-			if _, err := tx.Exec(`INSERT INTO post_metrics(post_id,account,date,text,created_at,impressions,likes,replies,reposts,is_reply) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(post_id,date) DO UPDATE SET text=excluded.text,impressions=excluded.impressions,likes=excluded.likes,replies=excluded.replies,reposts=excluded.reposts,is_reply=excluded.is_reply`,
-				p.ID, h, r.Date, p.Text, p.CreatedAt, p.PM.Impr, p.PM.Likes, p.PM.Replies, p.PM.RT+p.PM.Quotes, reply); err != nil {
+			// source is set on conflict too: a same-day archive row shares
+			// (post_id, date) and must become the live snapshot, not stay archived.
+			if _, err := tx.Exec(`INSERT INTO post_metrics(post_id,account,date,text,created_at,impressions,likes,replies,reposts,is_reply,source) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(post_id,date) DO UPDATE SET text=excluded.text,impressions=excluded.impressions,likes=excluded.likes,replies=excluded.replies,reposts=excluded.reposts,is_reply=excluded.is_reply,source=excluded.source`,
+				p.ID, h, r.Date, p.Text, p.CreatedAt, p.PM.Impr, p.PM.Likes, p.PM.Replies, p.PM.RT+p.PM.Quotes, reply, "live"); err != nil {
 				return err
 			}
 			n++
@@ -182,7 +237,7 @@ func apiData(db *sql.DB) (any, error) {
 	}
 	rows.Close()
 	for _, a := range list {
-		var hist []map[string]any
+		hist := []map[string]any{}
 		r, _ := db.Query(`SELECT date,followers,following,posts FROM follower_snapshots WHERE account=? ORDER BY date`, a.h)
 		for r.Next() {
 			var d string
@@ -205,13 +260,13 @@ func apiData(db *sql.DB) (any, error) {
 			}
 		}
 		var posts []map[string]any
-		r, _ = db.Query(`SELECT post_id,text,created_at,impressions,likes,replies,reposts,is_reply FROM post_metrics m WHERE account=? AND created_at>=? AND date=(SELECT MAX(date) FROM post_metrics WHERE post_id=m.post_id) ORDER BY created_at DESC LIMIT 100`, a.h, time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339))
+		r, _ = db.Query(`SELECT post_id,text,created_at,impressions,likes,replies,reposts,is_reply,COALESCE(source,'live') FROM post_metrics m WHERE account=? AND created_at>=? AND date=(`+preferLiveDateSQL(false)+`) ORDER BY created_at DESC LIMIT 100`, a.h, time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339))
 		for r.Next() {
-			var id, t, c string
-			var i *int
-			var l, rp, rt, ir int
-			r.Scan(&id, &t, &c, &i, &l, &rp, &rt, &ir)
-			posts = append(posts, map[string]any{"is_reply": ir == 1, "id": id, "text": t, "created_at": c, "impressions": i, "likes": l, "replies": rp, "reposts": rt,
+			var id, t, c, src string
+			var i, rp *int
+			var l, rt, ir int
+			r.Scan(&id, &t, &c, &i, &l, &rp, &rt, &ir, &src)
+			posts = append(posts, map[string]any{"is_reply": ir == 1, "id": id, "text": t, "created_at": c, "impressions": i, "likes": l, "replies": rp, "reposts": rt, "source": src,
 				"url": "https://x.com/" + a.h + "/status/" + id})
 		}
 		r.Close()
@@ -242,7 +297,17 @@ func apiData(db *sql.DB) (any, error) {
 }
 
 func postHistory(db *sql.DB, id string) (map[string]any, error) {
-	rows, err := db.Query(`SELECT account,date,text,created_at,impressions,likes,replies,reposts FROM post_metrics WHERE post_id=? ORDER BY date`, id)
+	// When any live snapshot exists, archive rows are omitted. The drill-in
+	// uses the last history point, and an import dated today would otherwise
+	// be that point.
+	rows, err := db.Query(`SELECT account,date,text,created_at,impressions,likes,replies,reposts FROM post_metrics
+		WHERE post_id=? AND (
+			COALESCE(source,'live')='live'
+			OR NOT EXISTS (
+				SELECT 1 FROM post_metrics live
+				WHERE live.post_id=post_metrics.post_id AND COALESCE(live.source,'live')='live'
+			)
+		) ORDER BY date`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -251,8 +316,8 @@ func postHistory(db *sql.DB, id string) (map[string]any, error) {
 	out := map[string]any{"id": id}
 	for rows.Next() {
 		var acct, d, t, c string
-		var i *int
-		var l, rp, rt int
+		var i, rp *int
+		var l, rt int
 		rows.Scan(&acct, &d, &t, &c, &i, &l, &rp, &rt)
 		out["account"], out["text"], out["created_at"] = acct, t, c
 		out["url"] = "https://x.com/" + acct + "/status/" + id
@@ -350,7 +415,7 @@ func bearerAuthorized(r *http.Request, tok string) bool {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("usage: xstats serve|ingest|version [flags]")
+		fmt.Println("usage: xstats serve|ingest|import-archive|version [flags]")
 		os.Exit(2)
 	}
 	if os.Args[1] == "version" {
@@ -360,6 +425,7 @@ func main() {
 	fsFlags := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 	dbp := fsFlags.String("db", "xstats.db", "SQLite path")
 	addr := fsFlags.String("addr", "127.0.0.1:8080", "listen address")
+	account := fsFlags.String("account", "", "archive handle if data/account.js is absent")
 	fsFlags.Parse(os.Args[2:])
 	if _, err := statsLocation(); err != nil {
 		log.Fatal(err)
@@ -371,6 +437,14 @@ func main() {
 			if err := ingest(db, f); err != nil {
 				log.Fatalf("%s: %v", f, err)
 			}
+		}
+	case "import-archive":
+		args := fsFlags.Args()
+		if len(args) != 1 {
+			log.Fatal("usage: xstats import-archive --db PATH [--account HANDLE] <zip-or-dir>")
+		}
+		if err := importArchive(db, args[0], *account); err != nil {
+			log.Fatal(err)
 		}
 	case "serve":
 		ver, rev := versionStamp()

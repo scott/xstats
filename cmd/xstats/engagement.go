@@ -43,13 +43,19 @@ type histDay struct {
 	Followers int
 }
 
-// scoredPost is one post's latest snapshot. Reposts must already be
-// retweets + quotes. Impressions is nil when that snapshot omitted the count.
+// scoredPost is one post's latest snapshot. Reposts for a live row are
+// retweets plus quotes. An archive row stores the known retweet_count only,
+// because quotes are not a separate column. Impressions is nil when that
+// snapshot omitted the count.
 type scoredPost struct {
-	ID, Text, CreatedAt     string
-	Impressions             *int
-	Likes, Replies, Reposts int
-	Points                  int
+	ID, Text, CreatedAt string
+	Impressions         *int
+	// Replies is nil when the snapshot has no reply count. A live 0 stays 0.
+	// Quotes are not a separate column: reposts is retweets plus quotes for a
+	// live row, and the known retweet_count for an archive row.
+	Replies        *int
+	Likes, Reposts int
+	Points         int
 }
 
 // dayEngagement is the per-account, per-snapshot-day score.
@@ -66,13 +72,16 @@ type scoredPost struct {
 // Impressions is nil when the day has posts but every one of them omitted
 // the count. Nil counts are not added in. A day with no posts is 0.
 type dayEngagement struct {
-	Date                                    string
-	Comments, NewFollowers, Reshares, Likes int
-	Impressions                             *int
-	Points                                  int
-	Score, ScoreDelta                       *float64
-	InProgress                              bool
-	Top                                     *scoredPost
+	Date string
+	// Comments is nil when the day has posts but every reply count is unknown.
+	// Nil counts are not added into the score. A day with no posts is 0.
+	Comments                      *int
+	NewFollowers, Reshares, Likes int
+	Impressions                   *int
+	Points                        int
+	Score, ScoreDelta             *float64
+	InProgress                    bool
+	Top                           *scoredPost
 }
 
 // statsLocation is the calendar used for engagement days and for "today".
@@ -121,10 +130,11 @@ func postDay(createdAt string, loc *time.Location) (string, bool) {
 }
 
 type dayBucket struct {
-	comments, reshares, likes int
-	impressions               *int
-	top                       scoredPost
-	hasTop                    bool
+	comments        *int
+	reshares, likes int
+	impressions     *int
+	top             scoredPost
+	hasTop          bool
 }
 
 // cmpImpressions orders a known count above unknown. Nil is less than any
@@ -147,7 +157,15 @@ func cmpImpressions(a, b *int) int {
 }
 
 func (b *dayBucket) add(p scoredPost) {
-	b.comments += p.Replies
+	// An unknown reply count adds nothing. A known 0 still counts as 0.
+	if p.Replies != nil {
+		if b.comments == nil {
+			v := *p.Replies
+			b.comments = &v
+		} else {
+			*b.comments += *p.Replies
+		}
+	}
 	b.reshares += p.Reposts
 	b.likes += p.Likes
 	if p.Impressions != nil {
@@ -158,7 +176,11 @@ func (b *dayBucket) add(p scoredPost) {
 			*b.impressions += *p.Impressions
 		}
 	}
-	pts := postLevelPoints(p.Replies, p.Reposts, p.Likes)
+	replies := 0
+	if p.Replies != nil {
+		replies = *p.Replies
+	}
+	pts := postLevelPoints(replies, p.Reposts, p.Likes)
 	p.Points = pts
 	c := cmpImpressions(p.Impressions, b.top.Impressions)
 	if !b.hasTop || pts > b.top.Points || (pts == b.top.Points && (c > 0 || (c == 0 && p.ID < b.top.ID))) {
@@ -205,8 +227,13 @@ func aggregateDays(hist []histDay, posts []scoredPost, today string, loc *time.L
 		} else {
 			zero := 0
 			e.Impressions = &zero
+			e.Comments = &zero
 		}
-		e.Points = dayLevelPoints(e.Comments, e.NewFollowers, e.Reshares, e.Likes)
+		comments := 0
+		if e.Comments != nil {
+			comments = *e.Comments
+		}
+		e.Points = dayLevelPoints(comments, e.NewFollowers, e.Reshares, e.Likes)
 		sc := float64(e.Points)
 		e.Score = &sc
 		out[i] = e
@@ -248,11 +275,11 @@ func priorWeekDelta(days []dayEngagement, i int) *float64 {
 }
 
 func loadLatestPosts(db *sql.DB, account string) ([]scoredPost, error) {
-	// One row per post: the newest snapshot. Re-pushing a date replaces that
-	// date's rows at ingest, and MAX(date) then drops the stale copy.
+	// One row per post. Live snapshots outrank archive rows, then the newest
+	// date wins. Re-pushing a date replaces that date's live rows at ingest.
 	rows, err := db.Query(`SELECT post_id, text, created_at, impressions, likes, replies, reposts
 		FROM post_metrics m
-		WHERE account=? AND date=(SELECT MAX(date) FROM post_metrics WHERE post_id=m.post_id AND account=m.account)`, account)
+		WHERE account=? AND date=(`+preferLiveDateSQL(true)+`)`, account)
 	if err != nil {
 		return nil, err
 	}

@@ -199,7 +199,7 @@ func TestAggregateDays(t *testing.T) {
 		// Impressions are not 1000, so a rate would not equal the points total.
 		{ID: "p1", Text: "first", CreatedAt: "2026-09-01T12:00:00.000Z", Impressions: ip(2500), Likes: 50},
 		// Zero impressions still scores. The follower drop makes the total negative.
-		{ID: "p2", Text: "quiet", CreatedAt: "2026-09-02T12:00:00Z", Impressions: ip(0), Likes: 4, Replies: 1},
+		{ID: "p2", Text: "quiet", CreatedAt: "2026-09-02T12:00:00Z", Impressions: ip(0), Likes: 4, Replies: ip(1)},
 		{ID: "p3", Text: "scored", CreatedAt: "2026-09-03T12:00:00Z", Impressions: ip(2000), Likes: 10},
 		// 05:30Z on Sep 5 is 23:30 MT on Sep 4, so this stays on the Sep 4 snapshot.
 		{ID: "p4", Text: "offset", CreatedAt: "2026-09-05T05:30:00Z", Impressions: ip(500), Likes: 5},

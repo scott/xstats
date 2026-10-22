@@ -39,7 +39,7 @@ A small, self-hosted X (Twitter) stats dashboard. Track follower growth and per-
 ```
 
 - **One binary.** `xstats` embeds the static frontend with `go:embed` and uses `modernc.org/sqlite`, so it builds with `CGO_ENABLED=0` and has no runtime dependencies.
-- **SQLite.** Tables: `accounts` (`last_ingest` is set on each successful ingest and stays null until then), `follower_snapshots` (one row per account per day), `post_metrics` (one row per post per day), `clickthroughs` (one row per day). Re-ingesting a day upserts, so it is always safe to rerun.
+- **SQLite.** Tables: `accounts` (`last_ingest` is set on each successful ingest and stays null until then), `follower_snapshots` (one row per account per day), `post_metrics` (one row per post per day), `clickthroughs` (one row per day). `post_metrics.source` is `live` for a snapshot bundle and `archive` for an archive import. Re-ingesting a day replaces that day's live rows. Importing an archive again does not add a second archive row.
 - **Ingest API.** `POST /api/ingest` with `Authorization: Bearer <token>` accepts a snapshot bundle. The token comes from `XSTATS_INGEST_TOKEN`; if it is unset, ingest is disabled.
 - **Health.** `GET /api/health` uses that same bearer token. If `XSTATS_INGEST_TOKEN` is unset, every health request is refused, same as ingest. A 200 body is JSON with `version`, `commit`, `server_time` (RFC3339, UTC), and `accounts`. Each account has only `latest_snapshot_date` and `last_ingest` (`last_ingest` is null until a successful ingest records it). No post text and no follower counts or other metrics. Example: `curl -sH "Authorization: Bearer $XSTATS_INGEST_TOKEN" http://127.0.0.1:8080/api/health`.
 - **Read API.** `GET /api/data` (accounts, follower history, daily engagement, recent posts) and `GET /api/post/<id>` (daily history for one post).
@@ -142,6 +142,27 @@ One JSON file per day. The `user` and `posts` objects are the X API v2 responses
 - Reposts shown in the UI are `retweet_count + quote_count`.
 - A missing `impression_count` is stored as NULL and shown as a dash. `impression_count: 0` is stored as 0. NULL is left out of impression totals.
 
+## Archive import
+
+`xstats import-archive` reads an X data archive and writes posts straight into the database. Pass the zip, or the extracted folder that contains `data/`. This command does not call the X API, and there is no server ingest path for an archive yet.
+
+```
+bin/xstats import-archive --db data/xstats.db ~/Downloads/x-archive.zip
+bin/xstats import-archive --db data/xstats.db --account example ~/Downloads/x-archive
+```
+
+The handle comes from `data/account.js` (`account.username`) when that file is present. If it is missing, `--account` is required. If both are set, they have to match. The stored handle is lowercased, and a leading `@` is stripped.
+
+`data/tweets.js` and `data/tweets-part*.js` are JSON arrays assigned with `window.YTD.tweets.partN = `. Each item is `{"tweet": {...}}`. The importer reads `id_str`, `created_at` (`Wed Oct 10 20:19:24 +0000 2018`, stored as RFC3339 UTC), `full_text`, `favorite_count` (likes), and `retweet_count` (reposts). Counts in the archive are strings. Impressions and replies are NULL. There is no separate quotes column, so unknown quotes are not added into reposts, which stay the known `retweet_count`. A post is a reply when `full_text` starts with `@` or any `in_reply_to_*` string is non-empty. Posts whose text starts with `RT @` are skipped.
+
+Rows are tagged `source = 'archive'` and dated the import day in `XSTATS_TZ` (the same zone the dashboard uses for today, not a fixed Mountain Time). One archive row is kept per post. A later import does not update that row and does not insert another one. A post that already has any live snapshot is left completely alone, including when the archive row would have been dated later than the live one. The drill-in then lists only the live snapshots, and the latest-snapshot queries pick the newest live row.
+
+A missing required field, a wrong JSON type, or an unexpected `window.YTD` prefix fails the import, names the file, item, and field, and writes nothing.
+
+`data/note-tweet.js` is not read. A long post keeps the `full_text` from `tweets.js`.
+
+This has not been checked against a real X archive. The field names come from public documentation of the archive format.
+
 ## Engagement score
 
 Each follower-history day on `GET /api/data` includes an `engagement` object. Existing history fields are unchanged. The response also includes the weights once:
@@ -156,7 +177,7 @@ score = 3×comments + 4×new_followers + 2×reshares + 1×likes
 
 `points` is the same total, kept for clients that already read it. Impressions stay on the day and in the hover card as context; they do not scale the score.
 
-- **comments** are `reply_count`. **likes** are `like_count`. **reshares** are `retweet_count + quote_count`, the value already stored in `post_metrics.reposts`.
+- **comments** are `reply_count`. **likes** are `like_count`. **reshares** are the stored `reposts` value. Live ingest stores `retweet_count + quote_count`. An archive row stores the known `retweet_count` only. An unknown reply count is left out of the score. When every post that day has an unknown reply count, comments are null and the hover shows a dash. A known 0 stays 0. A day with no posts still reports 0.
 - Posts are summed on the calendar day of `created_at` in `XSTATS_TZ` (default `America/Denver`), the day the hourly ingest closes. A post at 23:30 Mountain Time is 05:30 UTC the next morning and still counts on the Mountain Time day. A bare `YYYY-MM-DD` is that calendar day and is not shifted. The recent-posts list is still the last 30 UTC days. Each post is counted once, from its latest snapshot, so re-pushing a day replaces that snapshot instead of double-counting. The chart runs from the first follower snapshot through the last, one bar slot per calendar day, centered on that day's follower point. The right axis is integer points. A day with no snapshot, or a score of 0 or below, keeps the slot and draws no bar.
 - **new_followers** is the change from the previous follower snapshot. The first snapshot has no prior day, so new followers are 0.
 - A day with 0 impressions still has a score. A follower drop can make the score negative; the card shows that value and the chart draws no bar.

@@ -78,7 +78,7 @@ tr.pr{cursor:pointer}tr.pr:hover td{background:color-mix(in srgb,var(--acc) 6%,t
 </div>
 <div class="card" style="margin-top:20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div class="lbl">Recent posts, last 30 days</div><label class="sub" style="cursor:pointer"><input type="checkbox" id="incr"> Include replies</label></div>
 <table><thead><tr><th>Post</th><th>Impressions</th><th>Likes</th><th>Replies</th><th>Reposts</th></tr></thead><tbody id="rows"></tbody></table>
-<div class="foot">Metrics from public X reads, refreshed daily. Reposts include quotes. Retweets are not shown.</div></div>
+<div class="foot" id="foot">Metrics from public X reads, refreshed daily. Reposts include quotes. Retweets are not shown.</div></div>
 </div>
 <div class="ov" id="ov"><div class="pn" id="pn"></div></div>
 <script>
@@ -102,7 +102,7 @@ function tipHTML(e,date){
  const scored=typeof e.score==='number'&&Number.isFinite(e.score);
  let delta='';
  if(scored&&typeof e.score_delta==='number'&&Number.isFinite(e.score_delta)){const d=e.score_delta,cls=d>0?'up':d<0?'down':'sub';delta=`<span class="${cls}" style="margin-left:auto;font-size:12px;white-space:nowrap">${d>0?'+':''}${f1(d)} vs 7-day avg</span>`}
- const rows=EROWS.map(([k,lab])=>`<div class="rw"><span>${lab}</span><span>${fmt(+e[k]||0)}</span></div>`).join('');
+ const rows=EROWS.map(([k,lab])=>{const v=e[k];return `<div class="rw"><span>${lab}</span><span>${v==null?'-':fmt(v)}</span></div>`}).join('');
  const impr=e.impressions==null?'-':compact(e.impressions);
  let top='';if(e.top_post&&e.top_post.url)top=`<div class="sub" style="margin-top:4px">Top post: <a href="${esc(e.top_post.url)}" target="_blank" rel="noopener">${esc(shortText(e.top_post.text))}</a></div>`;
  const num=scored?fmt(Math.round(e.score)):'\u2014';
@@ -197,16 +197,26 @@ document.addEventListener('pointerdown',e=>{const ch=$('chart');if(ch&&ch.contai
 function render(){const a=D.accounts[cur];if(!a){$('fc').textContent='No data';return}
  $('sw').innerHTML=HANDLES.map(h=>`<option value="${h}"${h==cur?' selected':''}>@${h}</option>`).join('');
  $('sw').onchange=e=>{cur=e.target.value;localStorage.setItem('acct',cur);render()};
- const h=a.history,last=h[h.length-1];$('fc').textContent=fmt(last.followers);$('fg').textContent=fmt(last.following);$('pc').textContent=fmt(last.posts);
+ const h=a.history||[];
+ if(!h.length){$('fc').textContent='-';$('fg').textContent='-';$('pc').textContent='-';$('delta').innerHTML='';$('d7').innerHTML='-';$('snap').textContent='No follower snapshot yet';$('chart').innerHTML='<div class="empty">No follower snapshots yet.</div>'}
+ else{const last=h[h.length-1];$('fc').textContent=fmt(last.followers);$('fg').textContent=fmt(last.following);$('pc').textContent=fmt(last.posts);
  $('delta').innerHTML=sign(dlt(h,30))+' <span class="sub">last 30 days</span>';$('d7').innerHTML=sign(dlt(h,7));$('snap').textContent='Last snapshot: '+dl(last.date);
  const hasEng=h.some(s=>s.engagement);
  $('chart').innerHTML=chart(h,'followers',{H:hasEng?380:220,bars:hasEng?h.map(s=>{const e=s.engagement;return e&&typeof e.score==='number'&&e.score>0?e.score:null}):null});
- if(hasEng)bindTip(h);
+ if(hasEng)bindTip(h)}
  $('ctc').style.display=(D.clickthroughs||[]).length?'':'none';const c=D.clickthroughs||[];
  $('ct').innerHTML=c.length?`<div class="big">${fmt(c.reduce((s,r)=>s+r.visits,0))}</div><div class="sub">visits from x.com and t.co, ${c[0].date} to ${c[c.length-1].date}</div>`
  :'';
  const inc=localStorage.getItem('incReplies')==='1';$('incr').checked=inc;$('incr').onchange=e=>{localStorage.setItem('incReplies',e.target.checked?'1':'0');render()};
- $('rows').innerHTML=(a.posts||[]).filter(p=>inc||!p.is_reply).map(p=>{return `<tr class="pr" data-id="${p.id}"><td><a href="#post/${p.id}">${esc(p.text.length>120?p.text.slice(0,117)+'...':p.text)}</a><div class="d">${new Date(p.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div></td>
+ const shown=(a.posts||[]).filter(p=>inc||!p.is_reply);
+ const anyArchive=shown.some(p=>p.source==='archive');
+ const allLive=shown.length>0&&shown.every(p=>p.source==='live');
+ let note='Metrics from public X reads, refreshed daily.';
+ if(allLive) note+=' Reposts include quotes.';
+ if(anyArchive) note+=' Archive rows have no reply, quote or impression counts.';
+ note+=' Retweets are not shown.';
+ $('foot').textContent=note;
+ $('rows').innerHTML=shown.map(p=>{return `<tr class="pr" data-id="${p.id}"><td><a href="#post/${p.id}">${esc(p.text.length>120?p.text.slice(0,117)+'...':p.text)}</a><div class="d">${new Date(p.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div></td>
  <td class="n" data-l="Impr">${fmt(p.impressions)}</td><td class="n" data-l="Likes">${fmt(p.likes)}</td><td class="n" data-l="Replies">${fmt(p.replies)}</td><td class="n" data-l="Reposts">${fmt(p.reposts)}</td></tr>`}).join('')||'<tr><td><div class="empty" style="text-align:center">No posts in the last 30 days</div></td></tr>'}
 document.addEventListener('click',e=>{const tr=e.target.closest('tr.pr');if(tr&&!e.target.closest('a')){location.hash='post/'+tr.dataset.id}});
 $('ov').onclick=e=>{if(e.target.id==='ov')closeP()};addEventListener('keydown',e=>{if(e.key==='Escape'){hideTip();closeP()}});
