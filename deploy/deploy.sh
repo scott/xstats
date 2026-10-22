@@ -2,8 +2,75 @@
 # Run from the box. Copies the prebuilt binary, unit and Caddyfile to the droplet,
 # installs Caddy, and sets basic auth. Nothing is built on the droplet.
 # Config: put XSTATS_HOST, XSTATS_DOMAIN, etc. in ~/.config/xstats/deploy.env (or .env.deploy).
+# XSTATS_TZ, when set, is checked locally and written to /etc/xstats/env. Omit it to keep the binary default.
 # Usage: XSTATS_HOST=203.0.113.10 XSTATS_DOMAIN=stats.example.com BASIC_AUTH_PASSWORD=... deploy/deploy.sh
 set -euo pipefail
+
+# trim_space strips leading and trailing whitespace, matching the binary's
+# TrimSpace on XSTATS_TZ. An empty result means "unset".
+trim_space() {
+  local s="$1"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+# render_xstats_env prints the /etc/xstats/env body. The ingest token is read
+# from stdin so it is never placed on a command line. Trailing newlines on the
+# token are removed; the rest of the token is unchanged. XSTATS_TZ is written
+# only when set; omitting the line leaves the binary default in place.
+render_xstats_env() {
+  local token
+  # $(cat) strips trailing newlines only. printf is a shell builtin, so the
+  # token is not passed as an argument to an external program.
+  token=$(cat)
+  printf 'XSTATS_INGEST_TOKEN=%s\n' "$token"
+  printf 'XSTATS_ACCOUNTS=%s\n' "${XSTATS_ACCOUNTS:-}"
+  if [ -n "${XSTATS_TZ:-}" ]; then
+    printf 'XSTATS_TZ=%s\n' "$XSTATS_TZ"
+  fi
+}
+
+# validate_xstats_tz rejects a name the server binary cannot load.
+# time.LoadLocation with embedded tzdata is the same check as statsLocation,
+# so a zone with no file on this machine still deploys when the binary has it.
+# Called before scp/ssh.
+validate_xstats_tz() {
+  local zone="$1" dir err
+  dir=$(mktemp -d)
+  trap 'rm -rf "$dir"' RETURN
+  cat >"$dir/main.go" <<'EOF'
+package main
+
+import (
+	"fmt"
+	"os"
+	"time"
+
+	_ "time/tzdata"
+)
+
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Fprintln(os.Stderr, "usage: checktz ZONE")
+		os.Exit(2)
+	}
+	if _, err := time.LoadLocation(os.Args[1]); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid XSTATS_TZ %q: %v\n", os.Args[1], err)
+		os.Exit(1)
+	}
+}
+EOF
+  if ! err=$(cd "$dir" && go mod init xstatstz >/dev/null 2>&1 && go build -o checktz . && ./checktz "$zone" 2>&1); then
+    if [ -n "$err" ]; then
+      printf '%s\n' "$err" >&2
+    else
+      printf 'invalid XSTATS_TZ %q\n' "$zone" >&2
+    fi
+    return 1
+  fi
+}
+
 cd "$(dirname "$0")/.."
 # Load local deploy config (gitignored). See .env.deploy.example.
 DEPLOY_ENV="${XSTATS_DEPLOY_ENV:-$HOME/.config/xstats/deploy.env}"
@@ -17,6 +84,19 @@ SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
 : "${BASIC_AUTH_PASSWORD:?set BASIC_AUTH_PASSWORD}"
 T="$XSTATS_SSH_USER@$XSTATS_HOST"
 O=(-i "$SSH_KEY" -o IdentitiesOnly=yes)
+
+if [ -n "${XSTATS_TZ+x}" ]; then
+  XSTATS_TZ=$(trim_space "$XSTATS_TZ")
+fi
+if [ -n "${XSTATS_TZ:-}" ]; then
+  validate_xstats_tz "$XSTATS_TZ"
+fi
+# Same gate as the zone check: fail before the build, scp, or ssh.
+TOKEN_FILE="${XSTATS_TOKEN_FILE:-$HOME/.config/xstats/ingest_token}"
+if [ ! -r "$TOKEN_FILE" ]; then
+  printf 'cannot read ingest token file: %s\n' "$TOKEN_FILE" >&2
+  exit 1
+fi
 
 [ -x bin/xstats ] || CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/xstats ./cmd/xstats
 scp "${O[@]}" bin/xstats deploy/xstats.service deploy/Caddyfile.tmpl deploy/set-auth.sh "$T:/tmp/"
@@ -42,9 +122,8 @@ systemctl daemon-reload && systemctl enable xstats
 ufw allow OpenSSH >/dev/null 2>&1 || true; ufw allow 80,443/tcp >/dev/null 2>&1 || true
 REMOTE
 
-# Ingest token over stdin into /etc/xstats/env (0640 root:xstats).
-TOKEN_FILE="${XSTATS_TOKEN_FILE:-$HOME/.config/xstats/ingest_token}"
-ssh "${O[@]}" "$T" 'install -d -m 0750 -g xstats /etc/xstats; umask 027; { printf "XSTATS_INGEST_TOKEN="; cat; echo; echo "XSTATS_ACCOUNTS='"${XSTATS_ACCOUNTS:-}"'"; } > /etc/xstats/env; chgrp xstats /etc/xstats/env; systemctl restart xstats' < "$TOKEN_FILE"
+# Env file over stdin (0640 root:xstats). The token stays off the command line.
+render_xstats_env < "$TOKEN_FILE" | ssh "${O[@]}" "$T" 'install -d -m 0750 -g xstats /etc/xstats; umask 027; cat > /etc/xstats/env; chgrp xstats /etc/xstats/env; systemctl restart xstats'
 
 # Password goes over stdin only: never on a command line, in a file, or in logs.
 printf '%s\n' "$BASIC_AUTH_PASSWORD" | ssh "${O[@]}" "$T" "bash /tmp/set-auth.sh $XSTATS_DOMAIN $XSTATS_AUTH_USER"

@@ -185,10 +185,10 @@ Put these in `~/.config/xstats/deploy.env` (mode 0600, see `.env.deploy.example`
 | `SSH_KEY` | `~/.ssh/id_ed25519` | SSH private key path |
 | `XSTATS_TOKEN_FILE` | `~/.config/xstats/ingest_token` | Ingest token file |
 | `XSTATS_ACCOUNTS` | unset | Optional tab order, e.g. `alice,bob`; first is the default |
-| `XSTATS_TZ` | `America/Denver` | Zone for engagement day buckets and `in_progress`. Zone data is embedded, so a host without tz files still resolves the default |
+| `XSTATS_TZ` | `America/Denver` | Zone for engagement day buckets and `in_progress`. `deploy.sh` propagates it to `/etc/xstats/env` when set, and omits the line when unset so the binary default applies. An invalid name fails the deploy before the server is touched. Zone data is embedded, so a host without tz files still resolves the default |
 | `STATS_URL` | required for push | Base URL used by `snapshot/push.sh` |
 
-`deploy.sh` installs Caddy from its official apt repo, creates an `xstats` system user, installs the binary to `/usr/local/bin`, the unit from `deploy/xstats.service`, and the token in `/etc/xstats/env` (mode 0640). The password is sent over SSH stdin and hashed on the server with `caddy hash-password`; only the bcrypt hash is stored. The script is idempotent.
+`deploy.sh` installs Caddy from its official apt repo, creates an `xstats` system user, installs the binary to `/usr/local/bin`, the unit from `deploy/xstats.service`, and `/etc/xstats/env` (mode 0640) with the ingest token, `XSTATS_ACCOUNTS`, and `XSTATS_TZ` when that zone is set. The password is sent over SSH stdin and hashed on the server with `caddy hash-password`; only the bcrypt hash is stored. The script is idempotent.
 
 Each deploy keeps the previous binary as `/usr/local/bin/xstats.prev` and backs up the database to `/var/lib/xstats/xstats.db.bak-<timestamp>`.
 
