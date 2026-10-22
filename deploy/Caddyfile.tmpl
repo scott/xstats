@@ -5,7 +5,8 @@ __DOMAIN__ {
 	handle @icons {
 		reverse_proxy 127.0.0.1:8080
 	}
-	@ingest path /api/ingest
+	# Bearer token, checked by xstats. No basic auth.
+	@ingest path /api/ingest /api/health
 	handle @ingest {
 		reverse_proxy 127.0.0.1:8080
 	}

@@ -27,6 +27,7 @@ A small, self-hosted X (Twitter) stats dashboard. Track follower growth and per-
  (any X API client)     HTTPS    +-------------------------------+
   raw JSON bundle  ------------> | Caddy (TLS, basic auth)       |
   POST /api/ingest   Bearer      |   /api/ingest: token only     |
+  GET  /api/health   Bearer      |   /api/health: token only     |
                                  |   favicons: public            |
                                  |   everything else: basic auth |
                                  |            |                  |
@@ -38,10 +39,11 @@ A small, self-hosted X (Twitter) stats dashboard. Track follower growth and per-
 ```
 
 - **One binary.** `xstats` embeds the static frontend with `go:embed` and uses `modernc.org/sqlite`, so it builds with `CGO_ENABLED=0` and has no runtime dependencies.
-- **SQLite.** Tables: `accounts`, `follower_snapshots` (one row per account per day), `post_metrics` (one row per post per day), `clickthroughs` (one row per day). Re-ingesting a day upserts, so it is always safe to rerun.
+- **SQLite.** Tables: `accounts` (`last_ingest` is set on each successful ingest and stays null until then), `follower_snapshots` (one row per account per day), `post_metrics` (one row per post per day), `clickthroughs` (one row per day). Re-ingesting a day upserts, so it is always safe to rerun.
 - **Ingest API.** `POST /api/ingest` with `Authorization: Bearer <token>` accepts a snapshot bundle. The token comes from `XSTATS_INGEST_TOKEN`; if it is unset, ingest is disabled.
+- **Health.** `GET /api/health` uses that same bearer token. If `XSTATS_INGEST_TOKEN` is unset, every health request is refused, same as ingest. A 200 body is JSON with `version`, `commit`, `server_time` (RFC3339, UTC), and `accounts`. Each account has only `latest_snapshot_date` and `last_ingest` (`last_ingest` is null until a successful ingest records it). No post text and no follower counts or other metrics. Example: `curl -sH "Authorization: Bearer $XSTATS_INGEST_TOKEN" http://127.0.0.1:8080/api/health`.
 - **Read API.** `GET /api/data` (accounts, follower history, daily engagement, recent posts) and `GET /api/post/<id>` (daily history for one post).
-- **Caddy** terminates TLS with automatic certificates and puts basic auth in front of the dashboard. `/api/ingest` is open to the bearer token. Favicon paths and `site.webmanifest` are open too: they are static files with no account data, and browsers request them without the dashboard credentials.
+- **Caddy** terminates TLS with automatic certificates and puts basic auth in front of the dashboard. `/api/ingest` and `/api/health` are open to the bearer token and do not require basic auth. Favicon paths and `site.webmanifest` are open too: they are static files with no account data, and browsers request them without the dashboard credentials.
 
 xstats does not call the X API itself. Collect data with whatever client you like and hand it the raw JSON.
 
