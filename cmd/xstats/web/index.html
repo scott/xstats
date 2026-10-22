@@ -162,7 +162,7 @@ function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||
   hits+=`<rect class="plot" x="0" y="0" width="${W}" height="${H}" fill="transparent"/>`}
  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;margin-top:10px${B?';cursor:pointer':''}" role="img" aria-label="${B?'Follower growth and daily engagement score':'Chart'}"><defs><linearGradient id="gr${key}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--acc)" stop-opacity=".4"/><stop offset="1" stop-color="var(--acc)" stop-opacity="0"/></linearGradient></defs>${g}${bars}${ax2}${line}<circle cx="${lp[0]}" cy="${lp[1]}" r="5" fill="var(--acc)" pointer-events="none"/>${guide}${halo}${hits}</svg>
  <div class="sub" style="display:flex;justify-content:space-between"><span>${h[0].date}</span><span>${dl(h[h.length-1].date)}</span></div>
- ${h.filter(s=>finite(s[key])).length<2&&!opts.quiet?'<div class="empty">First snapshot taken '+h.filter(s=>finite(s[key]))[0].date+'. The growth line fills in as daily snapshots run.</div>':''}`}
+ ${h.filter(s=>finite(s[key])).length===1&&!opts.quiet?'<div class="empty">First snapshot taken '+h.filter(s=>finite(s[key]))[0].date+'. The growth line fills in as daily snapshots run.</div>':''}`}
 function hideTip(){const tip=$('tip');if(tip){tip.hidden=true;tip.dataset.pin='';tip.style.pointerEvents='none'}
  const svg=$('chart')&&$('chart').querySelector('svg');if(!svg)return;
  svg.querySelectorAll('.bar').forEach(r=>r.setAttribute('fill-opacity',r.dataset.bf==='1'?'0.45':'0.38'));
