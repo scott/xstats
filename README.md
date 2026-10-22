@@ -130,6 +130,7 @@ One JSON file per day. The `user` and `posts` objects are the X API v2 responses
 - `date` defaults to today if omitted. `clickthroughs` is optional.
 - Posts starting with `RT @` are skipped. Posts starting with `@` or with `in_reply_to_user_id` are flagged as replies.
 - Reposts shown in the UI are `retweet_count + quote_count`.
+- A missing `impression_count` is stored as NULL and shown as a dash. `impression_count: 0` is stored as 0. NULL is left out of impression totals.
 
 ## Engagement score
 
@@ -149,6 +150,7 @@ score = 3×comments + 4×new_followers + 2×reshares + 1×likes
 - Posts are summed on the calendar day of `created_at` in `XSTATS_TZ` (default `America/Denver`), the day the hourly ingest closes. A post at 23:30 Mountain Time is 05:30 UTC the next morning and still counts on the Mountain Time day. A bare `YYYY-MM-DD` is that calendar day and is not shifted. The recent-posts list is still the last 30 UTC days. Each post is counted once, from its latest snapshot, so re-pushing a day replaces that snapshot instead of double-counting. The chart runs from the first follower snapshot through the last, one bar slot per calendar day, centered on that day's follower point. The right axis is integer points. A day with no snapshot, or a score of 0 or below, keeps the slot and draws no bar.
 - **new_followers** is the change from the previous follower snapshot. The first snapshot has no prior day, so new followers are 0.
 - A day with 0 impressions still has a score. A follower drop can make the score negative; the card shows that value and the chart draws no bar.
+- If the source omitted `impression_count`, that post is not added into the day's impression total. When every post that day omitted it, the total is null and the hover card shows a dash. A day with no posts still reports 0.
 - `in_progress` is true when that snapshot date is today in `XSTATS_TZ`, because the day can still be re-pushed. The page labels the browser's local today as "Today (in progress)", same as the follower line.
 - `score_delta` is this score minus the average score of earlier snapshot days in the previous 7 calendar days. Zero and negative scores are included.
 - `top_post` is the post created that day with the most post-level points (`3×replies + 2×reshares + 1×likes`). Ties prefer more impressions, then the lower post id. The link is `https://x.com/<handle>/status/<id>`.

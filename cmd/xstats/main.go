@@ -37,7 +37,26 @@ func openDB(p string) *sql.DB {
 	}
 	db.Exec(`ALTER TABLE post_metrics ADD COLUMN is_reply INT DEFAULT 0`) // no-op if present
 	db.Exec(`UPDATE post_metrics SET is_reply=1 WHERE text LIKE '@%'`)
+	// impressions has always been INT without NOT NULL, so existing rows can
+	// already hold NULL. Nothing is rewritten: a stored 0 stays 0.
+	if err := migrateImpressions(db); err != nil {
+		log.Fatal(err)
+	}
 	return db
+}
+
+// migrateImpressions confirms post_metrics.impressions can store NULL.
+// Databases created by this app already can. Rows are not copied or updated.
+func migrateImpressions(db *sql.DB) error {
+	var notnull int
+	err := db.QueryRow(`SELECT "notnull" FROM pragma_table_info('post_metrics') WHERE name='impressions'`).Scan(&notnull)
+	if err != nil {
+		return fmt.Errorf("post_metrics.impressions: %w", err)
+	}
+	if notnull != 0 {
+		return fmt.Errorf("post_metrics.impressions is NOT NULL")
+	}
+	return nil
 }
 
 // Raw bundle: x tool results as returned, grouped per account.
@@ -58,11 +77,12 @@ type rawBundle struct {
 			CreatedAt string `json:"created_at"`
 			InReplyTo string `json:"in_reply_to_user_id"`
 			PM        struct {
-				Impr    int `json:"impression_count"`
-				Likes   int `json:"like_count"`
-				Replies int `json:"reply_count"`
-				RT      int `json:"retweet_count"`
-				Quotes  int `json:"quote_count"`
+				// Nil when impression_count is omitted. A JSON 0 stays 0.
+				Impr    *int `json:"impression_count"`
+				Likes   int  `json:"like_count"`
+				Replies int  `json:"reply_count"`
+				RT      int  `json:"retweet_count"`
+				Quotes  int  `json:"quote_count"`
 			} `json:"public_metrics"`
 		} `json:"posts"`
 	} `json:"accounts"`
@@ -184,7 +204,8 @@ func apiData(db *sql.DB) (any, error) {
 		r, _ = db.Query(`SELECT post_id,text,created_at,impressions,likes,replies,reposts,is_reply FROM post_metrics m WHERE account=? AND created_at>=? AND date=(SELECT MAX(date) FROM post_metrics WHERE post_id=m.post_id) ORDER BY created_at DESC LIMIT 100`, a.h, time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339))
 		for r.Next() {
 			var id, t, c string
-			var i, l, rp, rt, ir int
+			var i *int
+			var l, rp, rt, ir int
 			r.Scan(&id, &t, &c, &i, &l, &rp, &rt, &ir)
 			posts = append(posts, map[string]any{"is_reply": ir == 1, "id": id, "text": t, "created_at": c, "impressions": i, "likes": l, "replies": rp, "reposts": rt,
 				"url": "https://x.com/" + a.h + "/status/" + id})
@@ -226,7 +247,8 @@ func postHistory(db *sql.DB, id string) (map[string]any, error) {
 	out := map[string]any{"id": id}
 	for rows.Next() {
 		var acct, d, t, c string
-		var i, l, rp, rt int
+		var i *int
+		var l, rp, rt int
 		rows.Scan(&acct, &d, &t, &c, &i, &l, &rp, &rt)
 		out["account"], out["text"], out["created_at"] = acct, t, c
 		out["url"] = "https://x.com/" + acct + "/status/" + id

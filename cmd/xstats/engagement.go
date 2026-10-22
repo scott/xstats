@@ -44,11 +44,12 @@ type histDay struct {
 }
 
 // scoredPost is one post's latest snapshot. Reposts must already be
-// retweets + quotes.
+// retweets + quotes. Impressions is nil when that snapshot omitted the count.
 type scoredPost struct {
-	ID, Text, CreatedAt                  string
-	Impressions, Likes, Replies, Reposts int
-	Points                               int
+	ID, Text, CreatedAt     string
+	Impressions             *int
+	Likes, Replies, Reposts int
+	Points                  int
 }
 
 // dayEngagement is the per-account, per-snapshot-day score.
@@ -61,10 +62,14 @@ type scoredPost struct {
 // because that snapshot can still be re-pushed. ScoreDelta is this score
 // minus the mean score of earlier snapshot days in the previous 7 calendar
 // days. Nil when the window has no scored day.
+//
+// Impressions is nil when the day has posts but every one of them omitted
+// the count. Nil counts are not added in. A day with no posts is 0.
 type dayEngagement struct {
 	Date                                    string
 	Comments, NewFollowers, Reshares, Likes int
-	Impressions, Points                     int
+	Impressions                             *int
+	Points                                  int
 	Score, ScoreDelta                       *float64
 	InProgress                              bool
 	Top                                     *scoredPost
@@ -116,19 +121,47 @@ func postDay(createdAt string, loc *time.Location) (string, bool) {
 }
 
 type dayBucket struct {
-	comments, reshares, likes, impressions int
-	top                                    scoredPost
-	hasTop                                 bool
+	comments, reshares, likes int
+	impressions               *int
+	top                       scoredPost
+	hasTop                    bool
+}
+
+// cmpImpressions orders a known count above unknown. Nil is less than any
+// number, including 0, so a real zero beats a missing count in a tie.
+func cmpImpressions(a, b *int) int {
+	switch {
+	case a == nil && b == nil:
+		return 0
+	case a == nil:
+		return -1
+	case b == nil:
+		return 1
+	case *a < *b:
+		return -1
+	case *a > *b:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func (b *dayBucket) add(p scoredPost) {
 	b.comments += p.Replies
 	b.reshares += p.Reposts
 	b.likes += p.Likes
-	b.impressions += p.Impressions
+	if p.Impressions != nil {
+		if b.impressions == nil {
+			v := *p.Impressions
+			b.impressions = &v
+		} else {
+			*b.impressions += *p.Impressions
+		}
+	}
 	pts := postLevelPoints(p.Replies, p.Reposts, p.Likes)
 	p.Points = pts
-	if !b.hasTop || pts > b.top.Points || (pts == b.top.Points && (p.Impressions > b.top.Impressions || (p.Impressions == b.top.Impressions && p.ID < b.top.ID))) {
+	c := cmpImpressions(p.Impressions, b.top.Impressions)
+	if !b.hasTop || pts > b.top.Points || (pts == b.top.Points && (c > 0 || (c == 0 && p.ID < b.top.ID))) {
 		b.top = p
 		b.hasTop = true
 	}
@@ -169,6 +202,9 @@ func aggregateDays(hist []histDay, posts []scoredPost, today string, loc *time.L
 				top := b.top
 				e.Top = &top
 			}
+		} else {
+			zero := 0
+			e.Impressions = &zero
 		}
 		e.Points = dayLevelPoints(e.Comments, e.NewFollowers, e.Reshares, e.Likes)
 		sc := float64(e.Points)
