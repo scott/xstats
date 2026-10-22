@@ -6,11 +6,9 @@ set -euo pipefail
 : "${SRC:?}"
 : "${WORK:?}"
 : "${XSTATS_RELEASE_URL:?}"
-: "${XSTATS_FILES_URL:?}"
 
 SCRIPT="$SRC/deploy/bootstrap.sh"
 RELEASE_URL="$XSTATS_RELEASE_URL"
-FILES_URL="$XSTATS_FILES_URL"
 
 fail() {
   printf '%s\n' "FAIL: $1" >&2
@@ -116,8 +114,15 @@ arch_name() {
 
 publish_rel() {
   local dir=$1
-  cp "$dir/xstats-linux-amd64" "$dir/xstats-linux-arm64" "$dir/SHA256SUMS" "$WORK/www/"
-  chmod a+r "$WORK/www/xstats-linux-amd64" "$WORK/www/xstats-linux-arm64" "$WORK/www/SHA256SUMS"
+  cp "$dir/xstats-linux-amd64" "$dir/xstats-linux-arm64" \
+    "$dir/xstats.service" "$dir/Caddyfile.tmpl" "$dir/set-auth.sh" \
+    "$dir/SHA256SUMS" "$WORK/www/"
+  if [ -f "$dir/bootstrap.sh" ]; then
+    cp "$dir/bootstrap.sh" "$WORK/www/"
+  fi
+  chmod a+r "$WORK/www/xstats-linux-amd64" "$WORK/www/xstats-linux-arm64" \
+    "$WORK/www/xstats.service" "$WORK/www/Caddyfile.tmpl" "$WORK/www/set-auth.sh" \
+    "$WORK/www/SHA256SUMS"
 }
 
 assert_env() {
@@ -322,6 +327,60 @@ expect_fail "checksum mismatch" env -u XSTATS_TZ \
 mv "$WORK/www/xstats-linux-$ARCH.good" "$WORK/www/xstats-linux-$ARCH"
 chmod a+r "$WORK/www/xstats-linux-$ARCH"
 echo "ok: tampered binary before install"
+
+assert_nothing_installed() {
+  [ ! -e /usr/local/bin/xstats ]
+  [ ! -e /usr/local/bin/xstats.prev ]
+  [ ! -e /etc/xstats/env ]
+  [ ! -e /etc/systemd/system/xstats.service ]
+  [ ! -e /etc/caddy/Caddyfile ]
+  ! id xstats >/dev/null 2>&1
+  [ ! -s /var/log/xstats-systemctl.log ]
+}
+
+# Companion downloads only happen when the script is not beside the files.
+mkdir -p /tmp/alone
+cp "$SCRIPT" /tmp/alone/bootstrap.sh
+chmod a+r /tmp/alone/bootstrap.sh
+
+# --- tampered set-auth.sh fails closed before install ---
+cp "$WORK/www/set-auth.sh" "$WORK/www/set-auth.sh.good"
+printf '\n# tamper\n' >> "$WORK/www/set-auth.sh"
+chmod a+r "$WORK/www/set-auth.sh"
+expect_fail "checksum mismatch" env -u XSTATS_TZ \
+  XSTATS_TOKEN_FILE="$WORK/token" \
+  XSTATS_PASSWORD_FILE="$WORK/password" \
+  bash /tmp/alone/bootstrap.sh --hostname xstats.example.com --release-url "$RELEASE_URL"
+assert_nothing_installed
+mv "$WORK/www/set-auth.sh.good" "$WORK/www/set-auth.sh"
+chmod a+r "$WORK/www/set-auth.sh"
+echo "ok: tampered set-auth.sh"
+
+# --- tampered Caddyfile.tmpl fails closed before install ---
+cp "$WORK/www/Caddyfile.tmpl" "$WORK/www/Caddyfile.tmpl.good"
+printf '\n# tamper\n' >> "$WORK/www/Caddyfile.tmpl"
+chmod a+r "$WORK/www/Caddyfile.tmpl"
+expect_fail "checksum mismatch" env -u XSTATS_TZ \
+  XSTATS_TOKEN_FILE="$WORK/token" \
+  XSTATS_PASSWORD_FILE="$WORK/password" \
+  bash /tmp/alone/bootstrap.sh --hostname xstats.example.com --release-url "$RELEASE_URL"
+assert_nothing_installed
+mv "$WORK/www/Caddyfile.tmpl.good" "$WORK/www/Caddyfile.tmpl"
+chmod a+r "$WORK/www/Caddyfile.tmpl"
+echo "ok: tampered Caddyfile.tmpl"
+
+# --- SHA256SUMS with no entry for xstats.service fails closed ---
+cp "$WORK/www/SHA256SUMS" "$WORK/www/SHA256SUMS.good"
+grep -v '[[:space:]]xstats\.service$' "$WORK/www/SHA256SUMS.good" > "$WORK/www/SHA256SUMS"
+chmod a+r "$WORK/www/SHA256SUMS"
+expect_fail "no entry for xstats.service" env -u XSTATS_TZ \
+  XSTATS_TOKEN_FILE="$WORK/token" \
+  XSTATS_PASSWORD_FILE="$WORK/password" \
+  bash /tmp/alone/bootstrap.sh --hostname xstats.example.com --release-url "$RELEASE_URL"
+assert_nothing_installed
+mv "$WORK/www/SHA256SUMS.good" "$WORK/www/SHA256SUMS"
+chmod a+r "$WORK/www/SHA256SUMS"
+echo "ok: missing xstats.service checksum"
 
 # --- invalid zone fails before any xstats file is installed ---
 expect_fail "invalid XSTATS_TZ" env \
@@ -568,23 +627,20 @@ grep -q 'xstats.example.com' /etc/caddy/Caddyfile
 assert_env carol "" "$WORK/token"
 echo "ok: hostname prompt suggests xstats.<domain>"
 
-# --- script alone downloads the unit, template, and set-auth.sh ---
+# --- script alone downloads checksummed companions from the release URL ---
 mkdir -p /tmp/alone
 cp "$SCRIPT" /tmp/alone/bootstrap.sh
 chmod a+r /tmp/alone/bootstrap.sh
-printf '\n# files-url-marker\n' >> "$WORK/www/deploy/xstats.service"
-printf '\n# files-url-marker\n' >> "$WORK/www/deploy/Caddyfile.tmpl"
-chmod a+r "$WORK/www/deploy/xstats.service" "$WORK/www/deploy/Caddyfile.tmpl" "$WORK/www/deploy/set-auth.sh"
 publish_rel "$WORK/rel2"
 expect_ok env -u XSTATS_TZ \
-  XSTATS_FILES_URL="$FILES_URL" \
   XSTATS_TOKEN_FILE="$WORK/token" \
   XSTATS_PASSWORD_FILE="$WORK/password" \
   XSTATS_ACCOUNTS=carol \
   bash /tmp/alone/bootstrap.sh --hostname xstats.example.com --release-url "$RELEASE_URL"
-grep -q 'files-url-marker' /etc/systemd/system/xstats.service
-grep -q 'files-url-marker' /etc/caddy/Caddyfile
-echo "ok: companion files downloaded"
+cmp /etc/systemd/system/xstats.service "$WORK/www/xstats.service"
+grep -q 'xstats.example.com' /etc/caddy/Caddyfile
+grep -q 'basic_auth' /etc/caddy/Caddyfile
+echo "ok: companion files downloaded and verified"
 
 # --- arm64 selection does not execute the foreign binary ---
 other=arm64

@@ -12,11 +12,12 @@
 # XSTATS_RELEASE_URL or --release-url replaces the download base so this
 # can be tested without a published release. The default is
 # https://github.com/scott/xstats/releases/latest/download
-# with assets xstats-linux-amd64, xstats-linux-arm64, and SHA256SUMS.
+# with assets xstats-linux-amd64, xstats-linux-arm64, xstats.service,
+# Caddyfile.tmpl, set-auth.sh, and SHA256SUMS.
 #
 # set-auth.sh, Caddyfile.tmpl, and xstats.service are used from this
 # directory when they sit beside the script. Otherwise they are downloaded
-# from XSTATS_FILES_URL (default: the main branch of this repo).
+# from the same release URL as the binary and checked against SHA256SUMS.
 
 # Refuse xtrace before any secret is read. bash -x would print expansions.
 case $- in
@@ -219,11 +220,11 @@ stage_companion_files() {
     auth=$script_dir/set-auth.sh
     return 0
   fi
-  local base=${XSTATS_FILES_URL:-https://raw.githubusercontent.com/scott/xstats/main/deploy}
-  base=${base%/}
-  download "$base/xstats.service" "$tmp/xstats.service"
-  download "$base/Caddyfile.tmpl" "$tmp/Caddyfile.tmpl"
-  download "$base/set-auth.sh" "$tmp/set-auth.sh"
+  local name
+  for name in xstats.service Caddyfile.tmpl set-auth.sh; do
+    download "$release_url/$name" "$tmp/$name"
+    verify_checksum "$tmp/$name" "$tmp/SHA256SUMS" "$name"
+  done
   unit=$tmp/xstats.service
   tmpl=$tmp/Caddyfile.tmpl
   auth=$tmp/set-auth.sh

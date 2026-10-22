@@ -292,7 +292,7 @@ ssh "root@$XSTATS_HOST" 'systemctl stop xstats && cp /tmp/xstats.db /var/lib/xst
 
 ## Install on a fresh server
 
-`deploy/bootstrap.sh` installs a release on Ubuntu 22.04 or 24.04. Run it as root on the server. It detects `amd64` or `arm64`, downloads that binary and `SHA256SUMS` from the latest GitHub release, and stops if the checksum is missing or wrong. It creates the `xstats` user, installs `deploy/xstats.service`, installs Caddy from Caddy's official apt repository, and renders `deploy/Caddyfile.tmpl` by running `deploy/set-auth.sh`. The dashboard env file is `/etc/xstats/env`, mode 0640, owner root, group xstats.
+`deploy/bootstrap.sh` installs a release on Ubuntu 22.04 or 24.04. Run it as root on the server. It detects `amd64` or `arm64`, downloads that binary and `SHA256SUMS` from the latest GitHub release, and stops if the checksum is missing or wrong. It creates the `xstats` user, installs `xstats.service`, installs Caddy from Caddy's official apt repository, and renders `Caddyfile.tmpl` by running `set-auth.sh`. The dashboard env file is `/etc/xstats/env`, mode 0640, owner root, group xstats.
 
 Point a DNS A record at the server first. The usual name is `xstats.<domain>`, for example `xstats.example.com`. With no hostname set, the prompt asks for the domain and suggests that name.
 
@@ -307,7 +307,7 @@ Put the dashboard password in `/root/dash_pass` the same way, or leave `--passwo
 Pipe the installer:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/scott/xstats/main/deploy/bootstrap.sh | sudo bash -s -- \
+curl -fsSL https://github.com/scott/xstats/releases/latest/download/bootstrap.sh | sudo bash -s -- \
   --hostname xstats.example.com \
   --accounts alice,bob \
   --token-file /root/ingest_token \
@@ -317,7 +317,7 @@ curl -fsSL https://raw.githubusercontent.com/scott/xstats/main/deploy/bootstrap.
 Download it, read it, then run it:
 
 ```
-curl -fsSL -o bootstrap.sh https://raw.githubusercontent.com/scott/xstats/main/deploy/bootstrap.sh
+curl -fsSL -o bootstrap.sh https://github.com/scott/xstats/releases/latest/download/bootstrap.sh
 less bootstrap.sh
 sudo bash bootstrap.sh \
   --hostname xstats.example.com \
@@ -331,7 +331,7 @@ Over SSH, from a checkout of this repo:
 ssh root@203.0.113.10 'bash -s -- --hostname xstats.example.com --token-file /root/ingest_token --password-file /root/dash_pass' < deploy/bootstrap.sh
 ```
 
-A copy of the script that is not sitting next to `set-auth.sh`, `Caddyfile.tmpl`, and `xstats.service` downloads those three files from the repository and uses them unchanged. `deploy/bootstrap.sh` in a checkout uses the copies beside it.
+A copy of the script that is not sitting next to `set-auth.sh`, `Caddyfile.tmpl`, and `xstats.service` downloads those three files from the same release URL as the binary and checks each one against `SHA256SUMS`. A missing entry, a duplicate entry, a mismatch, or an empty file stops the install before anything is installed. `deploy/bootstrap.sh` in a checkout uses the copies beside it.
 
 | Input | Default | Meaning |
 |---|---|---|
@@ -341,7 +341,7 @@ A copy of the script that is not sitting next to `set-auth.sh`, `Caddyfile.tmpl`
 | `--tz` / `XSTATS_TZ` | omitted | Optional zone written to `/etc/xstats/env` |
 | `--token-file` / `XSTATS_TOKEN_FILE` | prompt or stdin | File containing the ingest token |
 | `--password-file` / `XSTATS_PASSWORD_FILE` | prompt or stdin | File containing the dashboard password |
-| `--release-url` / `XSTATS_RELEASE_URL` | latest GitHub release | Base URL for `xstats-linux-amd64`, `xstats-linux-arm64`, and `SHA256SUMS` |
+| `--release-url` / `XSTATS_RELEASE_URL` | latest GitHub release | Base URL for the binary, `xstats.service`, `Caddyfile.tmpl`, `set-auth.sh`, and `SHA256SUMS` |
 
 When `XSTATS_TZ` is set, the script trims whitespace and checks the zone before it creates the user, installs packages, or writes xstats files. An invalid zone stops the install. When `XSTATS_TZ` is unset or blank, the line is left out of `/etc/xstats/env` and the binary keeps its own default.
 

@@ -15,6 +15,11 @@ if grep -nE 'America/Denver|Mountain' deploy/bootstrap.sh; then
   printf 'bootstrap.sh hardcodes a zone\n' >&2
   exit 1
 fi
+if grep -nE 'raw\.githubusercontent\.com|XSTATS_FILES_URL|[[:space:]]main[[:space:]/]' \
+  deploy/bootstrap.sh deploy/bootstrap_container_test.sh README.md; then
+  printf 'release fallback still points at a branch\n' >&2
+  exit 1
+fi
 
 if docker info >/dev/null 2>&1; then
   docker=(docker)
@@ -54,9 +59,8 @@ fi
 
 reset_www() {
   sudo rm -rf "$work/www"
-  mkdir -p "$work/www/deploy"
-  cp "$work/rel1/xstats-linux-amd64" "$work/rel1/xstats-linux-arm64" "$work/rel1/SHA256SUMS" "$work/www/"
-  cp deploy/xstats.service deploy/Caddyfile.tmpl deploy/set-auth.sh "$work/www/deploy/"
+  mkdir -p "$work/www"
+  cp "$work/rel1/"* "$work/www/"
   chmod -R a+rX "$work/www"
 }
 
@@ -84,7 +88,6 @@ for image in ubuntu:22.04 ubuntu:24.04; do
     -v "$ROOT:/src:ro" \
     -v "$work:/work" \
     -e "XSTATS_RELEASE_URL=http://127.0.0.1:${port}" \
-    -e "XSTATS_FILES_URL=http://127.0.0.1:${port}/deploy" \
     -e SRC=/src \
     -e WORK=/work \
     "$image" \
