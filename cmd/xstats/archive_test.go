@@ -88,8 +88,8 @@ func openTestDB(t *testing.T) *sql.DB {
 
 type postSnap struct {
 	ID, Account, Date, Text, Created, Source string
-	Impr                                     sql.NullInt64
-	Likes, Replies, Reposts, IsReply         int
+	Impr, Replies                            sql.NullInt64
+	Likes, Reposts, IsReply                  int
 }
 
 type acctSnap struct {
@@ -251,7 +251,7 @@ func TestImportArchiveDirAndZip(t *testing.T) {
 		if p.ID == idRT {
 			t.Fatal("retweet was stored")
 		}
-		if p.Source != "archive" || p.Account != "example_archive" || p.Date != "2026-10-22" || p.Replies != 0 || p.Impr.Valid {
+		if p.Source != "archive" || p.Account != "example_archive" || p.Date != "2026-10-22" || p.Replies.Valid || p.Impr.Valid {
 			t.Fatalf("row %+v", p)
 		}
 	}
@@ -289,7 +289,7 @@ func TestImportArchiveDirAndZip(t *testing.T) {
 	mux := newMux(db, "secret")
 	old := postBody(t, mux, idOld)
 	row := historyRow(t, old)
-	if old["created_at"] != "2018-10-10T20:19:24Z" || row["likes"].(float64) != 12 || row["reposts"].(float64) != 3 || row["replies"].(float64) != 0 || row["impressions"] != nil {
+	if old["created_at"] != "2018-10-10T20:19:24Z" || row["likes"].(float64) != 12 || row["reposts"].(float64) != 3 || row["replies"] != nil || row["impressions"] != nil {
 		t.Fatalf("drill-in %#v hist %#v", old, row)
 	}
 	if get(mux, "/api/post/"+idRT).Code != 404 {
@@ -315,7 +315,7 @@ func TestImportArchiveDirAndZip(t *testing.T) {
 	if listed[idReply]["is_reply"] != true || listed[idAt]["is_reply"] != true || listed[idZero]["is_reply"] != false {
 		t.Fatalf("flags %#v", listed)
 	}
-	if listed[idReply]["impressions"] != nil || listed[idZero]["likes"].(float64) != 0 {
+	if listed[idReply]["impressions"] != nil || listed[idReply]["replies"] != nil || listed[idZero]["likes"].(float64) != 0 || listed[idReply]["source"] != "archive" {
 		t.Fatalf("list metrics %#v", listed)
 	}
 	if !strings.Contains(get(mux, "/").Body.String(), "No follower snapshots yet") {
@@ -711,7 +711,7 @@ func TestArchiveLiveWins(t *testing.T) {
 			t.Fatal(err)
 		}
 		got := snapPosts(t, db)
-		if len(got) != 1 || got[0].Source != "live" || got[0].Likes != 9 || got[0].Reposts != 7 || got[0].Replies != 1 || !got[0].Impr.Valid || got[0].Impr.Int64 != 100 || got[0].Text != "live text" {
+		if len(got) != 1 || got[0].Source != "live" || got[0].Likes != 9 || got[0].Reposts != 7 || !got[0].Replies.Valid || got[0].Replies.Int64 != 1 || !got[0].Impr.Valid || got[0].Impr.Int64 != 100 || got[0].Text != "live text" {
 			t.Fatalf("%+v", got)
 		}
 		if accts := snapAccounts(t, db); len(accts) != 1 || accts[0].Name != "Live Name" {
@@ -811,12 +811,12 @@ func TestExistingRowsCountAsLive(t *testing.T) {
 	db2.Close()
 	var source string
 	var likes int
-	var impr sql.NullInt64
-	if err := db.QueryRow(`SELECT source, likes, impressions FROM post_metrics WHERE post_id='42'`).Scan(&source, &likes, &impr); err != nil {
+	var impr, replies sql.NullInt64
+	if err := db.QueryRow(`SELECT source, likes, impressions, replies FROM post_metrics WHERE post_id='42'`).Scan(&source, &likes, &impr, &replies); err != nil {
 		t.Fatal(err)
 	}
-	if source != "live" || likes != 8 || !impr.Valid || impr.Int64 != 5 {
-		t.Fatalf("migrated source %q likes %d impr %+v", source, likes, impr)
+	if source != "live" || likes != 8 || !impr.Valid || impr.Int64 != 5 || !replies.Valid || replies.Int64 != 0 {
+		t.Fatalf("migrated source %q likes %d impr %+v replies %+v", source, likes, impr, replies)
 	}
 	arch := t.TempDir()
 	tw := baseTweet("42", "Wed Oct 10 20:19:24 +0000 2018", "archive copy", "99", "1")
@@ -827,7 +827,65 @@ func TestExistingRowsCountAsLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := snapPosts(t, db)
-	if len(got) != 1 || got[0].Source != "live" || got[0].Likes != 8 || got[0].Text != "old live post" || !got[0].Impr.Valid || got[0].Impr.Int64 != 5 {
+	if len(got) != 1 || got[0].Source != "live" || got[0].Likes != 8 || got[0].Text != "old live post" || !got[0].Impr.Valid || got[0].Impr.Int64 != 5 || !got[0].Replies.Valid || got[0].Replies.Int64 != 0 {
 		t.Fatalf("legacy row overwritten %+v", got)
+	}
+}
+
+// An archive reply has no reply count. The day's score is reshares and likes
+// only. The reply flag must not add weightComments.
+func TestArchiveScoreSkipsUnknownReplies(t *testing.T) {
+	t.Setenv("XSTATS_TZ", "UTC")
+	created := time.Now().UTC().AddDate(0, 0, -2).Truncate(24 * time.Hour).Add(18 * time.Hour)
+	day := created.Format("2006-01-02")
+	const likes, reposts = 5, 4
+	dir := t.TempDir()
+	tw := baseTweet("910000000000000080", xStamp(created), "Scored from the fake archive.", itoaN(likes), itoaN(reposts))
+	tw["in_reply_to_user_id_str"] = "424242"
+	writeArchive(t, dir, map[string][]byte{
+		"data/account.js": accountJS("example_archive"),
+		"data/tweets.js":  ytd("tweets", 0, []any{map[string]any{"tweet": tw}}),
+	})
+	db := openTestDB(t)
+	if err := importArchiveAt(db, dir, "", time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	ingestString(t, db, `{"date":"`+day+`","accounts":{"example_archive":{"user":{"id":"4242","username":"example_archive","name":"Example Archive","public_metrics":{"followers_count":10,"following_count":1,"tweet_count":1}},"posts":[]}}}`)
+	mux := newMux(db, "secret")
+	_, e := histEng(t, apiRoot(t, mux), "example_archive", day)
+	want := weightReshares*reposts + weightLikes*likes
+	if asInt(e["score"]) != want || asInt(e["points"]) != want || asInt(e["reshares"]) != reposts || asInt(e["likes"]) != likes || asInt(e["new_followers"]) != 0 {
+		t.Fatalf("score %+v want %d", e, want)
+	}
+	if e["comments"] != nil {
+		t.Fatalf("unknown replies counted as %#v", e["comments"])
+	}
+	if asInt(e["score"]) != want || want+weightComments == want {
+		t.Fatal("reply weight would not have changed the score")
+	}
+	posts := apiRoot(t, mux)["accounts"].(map[string]any)["example_archive"].(map[string]any)["posts"].([]any)
+	if len(posts) != 1 {
+		t.Fatalf("posts %#v", posts)
+	}
+	p := posts[0].(map[string]any)
+	if p["replies"] != nil || p["source"] != "archive" || p["is_reply"] != true || p["impressions"] != nil {
+		t.Fatalf("post %#v", p)
+	}
+}
+
+func TestArchiveFooterCopy(t *testing.T) {
+	body := get(newMux(openTestDB(t), "secret"), "/").Body.String()
+	for _, s := range []string{
+		"if(allLive) note+=' Reposts include quotes.'",
+		"if(anyArchive) note+=' Archive rows have no reply, quote or impression counts.'",
+		"p.source==='archive'",
+		"v==null?'-':fmt(v)",
+	} {
+		if !strings.Contains(body, s) {
+			t.Fatalf("page missing %q", s)
+		}
+	}
+	if strings.Contains("Archive rows have no reply, quote or impression counts.", "\u2014") {
+		t.Fatal("em dash in footer copy")
 	}
 }

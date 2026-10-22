@@ -22,8 +22,10 @@ import (
 //
 //	window.YTD.tweets.part0 = [ {"tweet": {...}} ]
 //
-// Counts are strings. There is no reply_count or quote_count. note-tweet.js
-// is not read; long posts keep full_text from the tweets file.
+// Counts are strings. There is no reply_count or quote_count. Replies are
+// stored as NULL. Quotes are not a separate column, so reposts keeps the
+// known retweet_count and unknown quotes are not added. note-tweet.js is
+// not read; long posts keep full_text from the tweets file.
 const archiveCreatedAt = "Mon Jan 02 15:04:05 -0700 2006"
 
 var (
@@ -159,7 +161,7 @@ func importArchiveAt(db *sql.DB, archivePath, accountFlag string, now time.Time)
 			unchanged++
 			continue
 		}
-		if _, err := tx.Exec(`INSERT INTO post_metrics(post_id,account,date,text,created_at,impressions,likes,replies,reposts,is_reply,source) VALUES(?,?,?,?,?,NULL,?,0,?,?, 'archive')`,
+		if _, err := tx.Exec(`INSERT INTO post_metrics(post_id,account,date,text,created_at,impressions,likes,replies,reposts,is_reply,source) VALUES(?,?,?,?,?,NULL,?,NULL,?,?, 'archive')`,
 			p.id, handle, day, p.text, p.createdAt, p.likes, p.reposts, p.isReply); err != nil {
 			return err
 		}

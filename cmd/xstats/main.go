@@ -43,11 +43,30 @@ func openDB(p string) *sql.DB {
 	if err := migrateImpressions(db); err != nil {
 		log.Fatal(err)
 	}
+	// replies has always been INT without NOT NULL. Existing 0s stay 0.
+	// Archive imports store NULL for an unknown count and do not rewrite rows.
+	if err := migrateReplies(db); err != nil {
+		log.Fatal(err)
+	}
 	// Existing rows have no source column. They are live snapshots.
 	if err := migrateSource(db); err != nil {
 		log.Fatal(err)
 	}
 	return db
+}
+
+// migrateReplies confirms post_metrics.replies can store NULL.
+// Databases created by this app already can. Rows are not copied or updated.
+func migrateReplies(db *sql.DB) error {
+	var notnull int
+	err := db.QueryRow(`SELECT "notnull" FROM pragma_table_info('post_metrics') WHERE name='replies'`).Scan(&notnull)
+	if err != nil {
+		return fmt.Errorf("post_metrics.replies: %w", err)
+	}
+	if notnull != 0 {
+		return fmt.Errorf("post_metrics.replies is NOT NULL")
+	}
+	return nil
 }
 
 // migrateSource adds post_metrics.source when a database was created before
@@ -241,13 +260,13 @@ func apiData(db *sql.DB) (any, error) {
 			}
 		}
 		var posts []map[string]any
-		r, _ = db.Query(`SELECT post_id,text,created_at,impressions,likes,replies,reposts,is_reply FROM post_metrics m WHERE account=? AND created_at>=? AND date=(`+preferLiveDateSQL(false)+`) ORDER BY created_at DESC LIMIT 100`, a.h, time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339))
+		r, _ = db.Query(`SELECT post_id,text,created_at,impressions,likes,replies,reposts,is_reply,COALESCE(source,'live') FROM post_metrics m WHERE account=? AND created_at>=? AND date=(`+preferLiveDateSQL(false)+`) ORDER BY created_at DESC LIMIT 100`, a.h, time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339))
 		for r.Next() {
-			var id, t, c string
-			var i *int
-			var l, rp, rt, ir int
-			r.Scan(&id, &t, &c, &i, &l, &rp, &rt, &ir)
-			posts = append(posts, map[string]any{"is_reply": ir == 1, "id": id, "text": t, "created_at": c, "impressions": i, "likes": l, "replies": rp, "reposts": rt,
+			var id, t, c, src string
+			var i, rp *int
+			var l, rt, ir int
+			r.Scan(&id, &t, &c, &i, &l, &rp, &rt, &ir, &src)
+			posts = append(posts, map[string]any{"is_reply": ir == 1, "id": id, "text": t, "created_at": c, "impressions": i, "likes": l, "replies": rp, "reposts": rt, "source": src,
 				"url": "https://x.com/" + a.h + "/status/" + id})
 		}
 		r.Close()
@@ -297,8 +316,8 @@ func postHistory(db *sql.DB, id string) (map[string]any, error) {
 	out := map[string]any{"id": id}
 	for rows.Next() {
 		var acct, d, t, c string
-		var i *int
-		var l, rp, rt int
+		var i, rp *int
+		var l, rt int
 		rows.Scan(&acct, &d, &t, &c, &i, &l, &rp, &rt)
 		out["account"], out["text"], out["created_at"] = acct, t, c
 		out["url"] = "https://x.com/" + acct + "/status/" + id
