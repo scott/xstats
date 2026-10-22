@@ -587,6 +587,126 @@ func TestRangeClampsBeforeFirstDay(t *testing.T) {
 	}
 }
 
+// The 7d tile is the v0.1.1 follower delta: last count minus the latest
+// snapshot on or before that date minus 7 days. Fewer than two snapshots
+// is n/a, and a series shorter than 7 days uses the first snapshot.
+// d7_snaps is the full daily series, so the value does not follow the range.
+func TestSevenDayFollowersIgnoreRange(t *testing.T) {
+	pinNow(t, denverAt(t, 2026, time.October, 22, 12, 0))
+	t.Setenv("XSTATS_TZ", "America/Denver")
+	t.Setenv("XSTATS_START_DATES", "")
+	if err := configureStartDates(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { accountStartDates = nil })
+
+	mux, ing := testDB(t)
+	ing("early.json", snapBundle("2026-01-01", "example_one", 100, nil))
+	ing("d08.json", snapBundle("2026-10-08", "example_one", 1000, nil))
+	ing("d15.json", snapBundle("2026-10-15", "example_one", 1100, nil))
+	ing("d18.json", snapBundle("2026-10-18", "example_one", 1140, nil))
+	ing("d22.json", snapBundle("2026-10-22", "example_one", 1200, nil))
+	ing("short.json", snapBundle("2026-10-20", "example_new", 10, nil))
+	ing("short2.json", snapBundle("2026-10-22", "example_new", 25, nil))
+	ing("one.json", snapBundle("2026-10-22", "example_once", 7, nil))
+
+	page := get(mux, "/").Body.String()
+	for _, s := range []string{
+		`<span class="lbl">7d</span>`,
+		`function dlt(h,days){const snaps=h.filter(s=>typeof s.followers==='number');if(snaps.length<2)return null;const last=snaps[snaps.length-1],cut=new Date(last.date);cut.setDate(cut.getDate()-days);`,
+		`let base=snaps[0];for(const s of snaps)if(new Date(s.date)<=cut)base=s;return last.followers-base.followers}`,
+		`sign(dlt(a.d7_snaps||[],7))`,
+	} {
+		if !strings.Contains(page, s) {
+			t.Fatalf("page missing %q", s)
+		}
+	}
+	if strings.Contains(page, `lbl">Score`) || strings.Contains(page, "a.score") {
+		t.Fatal("score tile must stay off the page")
+	}
+
+	var snaps string
+	for _, q := range []string{
+		"range=today",
+		"range=yesterday",
+		"range=week",
+		"range=all",
+		"range=custom&from=2026-10-20&to=2026-10-22",
+		"range=custom&from=2026-01-01&to=2026-10-22",
+	} {
+		root := rangeRoot(t, mux, q)
+		acct := root["accounts"].(map[string]any)["example_one"].(map[string]any)
+		if got := followers7(t, acct["d7_snaps"]); got != 100 {
+			t.Fatalf("%s 7d %v", q, got)
+		}
+		b, err := json.Marshal(acct["d7_snaps"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if snaps == "" {
+			snaps = string(b)
+		} else if string(b) != snaps {
+			t.Fatalf("%s snaps %s", q, b)
+		}
+	}
+	today := rangeRoot(t, mux, "range=today")
+	one := today["accounts"].(map[string]any)["example_one"].(map[string]any)
+	if strings.Join(historyDates(t, one), ",") != "2026-10-22" {
+		t.Fatalf("today history %v", historyDates(t, one))
+	}
+	week := rangeRoot(t, mux, "range=week")["accounts"].(map[string]any)["example_one"].(map[string]any)
+	if asInt(week["delta"].(map[string]any)["followers"]) != 60 || week["bucket"] == "month" {
+		t.Fatalf("week delta %v bucket %v", week["delta"], week["bucket"])
+	}
+	all := rangeRoot(t, mux, "range=all")["accounts"].(map[string]any)["example_one"].(map[string]any)
+	if all["bucket"] != "month" || asInt(all["delta"].(map[string]any)["followers"]) == 100 {
+		t.Fatalf("all bucket %v delta %v", all["bucket"], all["delta"])
+	}
+	fresh := today["accounts"].(map[string]any)["example_new"].(map[string]any)
+	if followers7(t, fresh["d7_snaps"]) != 15 || strings.Join(historyDates(t, fresh), ",") != "2026-10-22" {
+		t.Fatalf("short series 7d %v history %v", followers7(t, fresh["d7_snaps"]), historyDates(t, fresh))
+	}
+	once := today["accounts"].(map[string]any)["example_once"].(map[string]any)
+	if followers7(t, once["d7_snaps"]) != nil {
+		t.Fatalf("single snapshot %v", once["d7_snaps"])
+	}
+}
+
+// followers7 is the v0.1.1 dlt(h, 7) rule on date strings: last follower
+// count minus the latest snapshot on or before that date minus 7 days.
+func followers7(t *testing.T, raw any) any {
+	t.Helper()
+	rows, ok := raw.([]any)
+	if !ok {
+		t.Fatalf("d7_snaps %#v", raw)
+	}
+	type snap struct {
+		date string
+		n    int
+	}
+	var snaps []snap
+	for _, item := range rows {
+		row := item.(map[string]any)
+		n, ok := asIntOK(row["followers"])
+		if !ok {
+			continue
+		}
+		snaps = append(snaps, snap{row["date"].(string), n})
+	}
+	if len(snaps) < 2 {
+		return nil
+	}
+	last := snaps[len(snaps)-1]
+	cut := addCivil(civil(last.date), 0, 0, -7).Format("2006-01-02")
+	base := snaps[0]
+	for _, s := range snaps {
+		if s.date <= cut {
+			base = s
+		}
+	}
+	return last.n - base.n
+}
+
 func rangeRoot(t *testing.T, mux *http.ServeMux, q string) map[string]any {
 	t.Helper()
 	w := get(mux, "/api/data?"+q)

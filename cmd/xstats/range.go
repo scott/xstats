@@ -400,6 +400,22 @@ func sumDailyScores(rows []map[string]any) float64 {
 	return s
 }
 
+// followerSnaps is every daily row that has a follower count, in order.
+// Backfilled days have a null count and are left out. The page's dlt()
+// uses this series for the fixed 7-day tile.
+func followerSnaps(hist []map[string]any) []map[string]any {
+	out := []map[string]any{}
+	for _, row := range hist {
+		n, ok := asIntOK(row["followers"])
+		if !ok {
+			continue
+		}
+		d, _ := row["date"].(string)
+		out = append(out, map[string]any{"date": d, "followers": n})
+	}
+	return out
+}
+
 func filterHist(rows []map[string]any, from, to string) []map[string]any {
 	out := []map[string]any{}
 	for _, row := range rows {
@@ -531,6 +547,10 @@ func projectAccount(handle string, acct map[string]any, spec rangeSpec, loc *tim
 	}
 	acct["first"] = first
 	acct["last_snapshot"] = lastSnapshotOnOrBefore(hist, today)
+	// d7_snaps is the full daily follower series. The 7d tile runs the
+	// v0.1.1 dlt() on it, so the number stays a fixed 7 days when history
+	// is windowed or grouped.
+	acct["d7_snaps"] = followerSnaps(hist)
 
 	visFrom := spec.From
 	dataTo := spec.DataTo
