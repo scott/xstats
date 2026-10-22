@@ -14,3 +14,4 @@ jobs:
           go-version-file: go.mod
       - run: go test ./...
       - run: bash deploy/deploy_test.sh
+      - run: bash snapshot/push_test.sh
