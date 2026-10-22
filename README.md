@@ -62,6 +62,14 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$(git d
 
 Without those `-X` flags the command prints `dev` and the commit from Go's embedded build info (`vcs.revision`, with `-dirty` when `vcs.modified` is true), or `unknown` when no commit is available.
 
+Pushing a `v*` tag publishes a [GitHub release](https://github.com/scott/xstats/releases) with `CGO_ENABLED=0` binaries for linux/amd64 and linux/arm64 (`xstats-linux-amd64`, `xstats-linux-arm64`) and a `SHA256SUMS` file. The release stamps `main.version` with the tag and `main.commit` with the commit. Download the binary and `SHA256SUMS` into the same directory, then verify:
+
+```
+sha256sum -c SHA256SUMS
+```
+
+`scripts/build-release.sh <version> <commit> <outdir>` is the build the release workflow runs.
+
 ## Favicon
 
 The mark is a growth chart on a `#07090d` tile: bars `#a371f7`, line and dot `#1d9bf0` (the `--bar` and `--acc` values in `cmd/xstats/web/index.html`). The outline is `#3d4a5c`, lighter than the page border `#1f2733`, so the tile still shows up on a dark browser tab and still reads on a light one.
