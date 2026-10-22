@@ -63,40 +63,106 @@ tr.pr{cursor:pointer}tr.pr:hover td{background:color-mix(in srgb,var(--acc) 6%,t
 .tip .rw span:nth-child(2){font-weight:600;text-align:right}
 .tip .ft{border-top:1px solid var(--bd);margin-top:4px;padding-top:8px}
 .tip a{color:var(--acc);text-decoration:none;pointer-events:auto}.tip a:hover{text-decoration:underline}
+.bd{margin-top:14px;font-variant-numeric:tabular-nums}.bd .sc{display:flex;align-items:baseline;gap:10px;margin:6px 0 18px}.bd .sc b{font-size:48px;color:var(--bar);line-height:1}
+.bd .rw{display:grid;grid-template-columns:1fr 72px 64px 72px;gap:8px;align-items:center;padding:13px 0;border-top:1px solid var(--row);font-size:14px}
+.bd .rw span{text-align:right}.bd .rw span:first-child{text-align:left}.bd .rw .pts{font-weight:600}.bd .hd{border-top:0;padding:0 0 8px;color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+.bd .mtr{height:6px;border-radius:3px;background:var(--row);margin-top:7px;overflow:hidden}.bd .mtr i{display:block;height:100%;background:var(--bar);opacity:.75;border-radius:3px}
+.bd .ft{border-top:1px solid var(--bd);padding-top:12px;margin-top:2px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}.bd a{color:var(--acc);text-decoration:none}
+.rpw{position:relative}
+.rpb{appearance:none;background:var(--sw);color:var(--fg);border:1px solid var(--bd);border-radius:10px;height:40px;padding:0 38px 0 14px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;min-width:180px;text-align:left;position:relative;white-space:nowrap}
+.rpb::after{content:"";position:absolute;right:15px;top:50%;width:7px;height:7px;border-right:2px solid var(--mut);border-bottom:2px solid var(--mut);transform:translateY(-70%) rotate(45deg)}
+.rpb:hover,.rpb:focus-visible,.rpb[aria-expanded=true]{border-color:var(--acc);outline:none}
+.rp{position:absolute;right:0;top:48px;z-index:20;background:var(--sw);border:1px solid var(--bd);border-radius:14px;box-shadow:0 18px 50px #000a;display:grid;grid-template-columns:160px auto}
+[data-theme=light] .rp{box-shadow:0 18px 50px #0f141933}.rp[hidden],.rpbk[hidden]{display:none}
+.rpl{border-right:1px solid var(--bd);padding:10px;display:flex;flex-direction:column;gap:2px}
+.rpl .pr{text-align:left;background:none;border:1px solid transparent;color:var(--fg);font:inherit;font-size:14px;padding:9px 12px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.rpl .pr:hover,.rpl .pr:focus-visible,.rpl .pr.hv{background:var(--row);outline:none}
+.rpl .pr[aria-pressed=true]{background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc);font-weight:600}
+.rpl .cu{margin-top:auto;cursor:default;color:var(--mut)}.rpl .cu:hover{background:none}
+.rpc{padding:14px 18px 10px}.rpm{display:flex;gap:28px}
+.mo{width:252px}.moh{display:flex;align-items:center;justify-content:space-between;height:32px;margin-bottom:6px;font-weight:600;font-size:14px}
+.nav{width:32px;height:32px;border-radius:8px;border:1px solid var(--bd);background:none;color:var(--fg);cursor:pointer;font:inherit;font-size:16px;line-height:1}.nav:disabled{opacity:.25;cursor:default}.nav.ph{visibility:hidden}
+.dw,.dg{display:grid;grid-template-columns:repeat(7,36px)}
+.dw span{font-size:11px;color:var(--mut);text-align:center;height:24px;line-height:24px;letter-spacing:.5px}
+.dg button{height:36px;border:0;background:none;color:var(--fg);font:inherit;font-size:13px;cursor:pointer;position:relative;font-variant-numeric:tabular-nums;padding:0}
+.dg button:hover{background:var(--row);border-radius:8px}
+.dg button.in{background:color-mix(in srgb,var(--acc) 16%,transparent);border-radius:0}
+.dg button.s,.dg button.e{background:var(--acc);color:#fff;font-weight:700}
+.dg button.s{border-radius:8px 0 0 8px}.dg button.e{border-radius:0 8px 8px 0}.dg button.s.e{border-radius:8px}
+.dg button.td::after{content:"";position:absolute;left:50%;bottom:5px;width:4px;height:4px;margin-left:-2px;border-radius:2px;background:currentColor}
+.dg button:disabled{color:var(--mut);opacity:.35;cursor:not-allowed;background:none}
+.dg button:focus-visible{outline:2px solid var(--acc);outline-offset:-2px;border-radius:8px}
+.rph{font-size:12px;margin-top:8px}
+.rpf{grid-column:1/-1;border-top:1px solid var(--bd);padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rpf .sm{flex:1 1 200px;font-size:13px}.rpf .sm b{color:var(--fg);font-weight:600}
+.cn{height:40px;border-radius:10px;border:1px solid var(--bd);background:none;color:var(--fg);font:inherit;font-size:14px;font-weight:600;padding:0 16px;cursor:pointer}.cn:hover{border-color:var(--mut)}
+.ap{height:40px;border-radius:10px;border:1px solid var(--acc);background:var(--acc);color:#fff;font:inherit;font-size:14px;font-weight:600;padding:0 18px;cursor:pointer}.ap:disabled{opacity:.4;cursor:not-allowed}
+.rpbk{display:none}
+.gb{font-size:11px;color:var(--mut);border:1px solid var(--bd);border-radius:999px;padding:2px 9px;letter-spacing:.3px}.gb:empty{display:none}
+.wk{display:grid;grid-template-columns:repeat(7,1fr);font-size:12px;color:var(--mut);text-align:center;margin-top:2px}.wk span{white-space:nowrap}.wk b{font-weight:400}
+.bk{display:grid;font-size:12px;color:var(--mut);text-align:center;margin-top:2px}.bk span{white-space:nowrap;overflow:visible}
+.tip .zm{margin-top:10px;width:100%;height:32px;border-radius:8px;border:1px solid var(--bd);background:none;color:var(--acc);font:inherit;font-size:13px;font-weight:600;cursor:pointer;pointer-events:auto}
+@media(max-width:820px){
+ .bd .rw{grid-template-columns:1fr 56px 44px 64px;font-size:13px}.bd .sc b{font-size:40px}
+ .rpw{flex:1}.rpb{width:100%;min-width:0}
+ .rpbk{display:block;position:fixed;inset:0;background:#0009;z-index:19}
+ .rp{position:fixed;left:0;right:0;bottom:0;top:auto;border-radius:18px 18px 0 0;grid-template-columns:1fr;max-height:92vh;overflow:auto;padding-top:14px}
+ .rp::before{content:"";position:absolute;top:6px;left:50%;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:var(--bd)}
+ .rpl{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--bd);gap:8px;padding:10px 14px;scrollbar-width:none}
+ .rpl .pr{flex:0 0 auto;border-color:var(--bd);border-radius:999px;padding:8px 14px}.rpl .cu{margin-top:0}
+ .rpc{padding:12px 14px 6px}.mo{width:100%}.dw,.dg{grid-template-columns:repeat(7,1fr)}.dg button{height:44px;font-size:15px}
+ .rpf{padding:12px 14px 18px}.rpf .sm{flex-basis:100%}.rpf .cn,.rpf .ap{flex:1}
+ .right{width:100%}.right .sel{flex:1}.right .sel select{width:100%;min-width:0}}
 </style></head><body><div class="wrap">
 <header><div class="logo">X<span>/</span>stats</div>
-<div class="right"><label class="sel"><span class="sr" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Account</span><select id="sw" aria-label="Account"></select></label><button class="tt" id="tt" title="Toggle theme" aria-label="Toggle theme"></button></div></header>
+<div class="right"><div class="rpw"><button class="rpb" id="rgb" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="rp"><span class="sr" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Date range: </span><span id="rgl">All time</span></button><div class="rpbk" id="rpbk" hidden></div><div class="rp" id="rp" role="dialog" aria-label="Choose a date range" hidden></div></div><label class="sel"><span class="sr" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Account</span><select id="sw" aria-label="Account"></select></label><button class="tt" id="tt" title="Toggle theme" aria-label="Toggle theme"></button></div></header>
 <div class="grid">
  <div class="side">
   <div class="card"><div class="lbl">Followers</div><div class="big" id="fc">-</div>
    <div id="delta" class="sub"></div>
-   <div class="mini"><div><span class="lbl">7d</span><b id="d7">-</b></div><div><span class="lbl">Following</span><b id="fg">-</b></div><div><span class="lbl">Posts</span><b id="pc">-</b></div></div>
+   <div class="mini"><div><span class="lbl">Score</span><b id="d7">-</b></div><div><span class="lbl">Following</span><b id="fg">-</b></div><div><span class="lbl">Posts</span><b id="pc">-</b></div></div>
    <div class="sub" style="margin-top:18px" id="snap"></div></div>
   <div class="card" id="ctc"><div class="lbl">Clickthroughs from X</div><div id="ct"></div></div>
  </div>
- <div class="card"><div class="ch-h"><div class="lbl">Follower growth</div><div class="lg"><span><i class="ln"></i>Followers</span><span><i class="br"></i>Engagement score</span></div></div><div id="chart" class="ch"></div></div>
+ <div class="card"><div class="ch-h"><div style="display:flex;gap:10px;align-items:center"><div class="lbl" id="chl">Follower growth</div><span class="gb" id="gb" aria-live="polite"></span></div><div class="lg" id="lgd"><span><i class="ln"></i>Followers</span><span><i class="br"></i>Engagement score</span></div></div><div id="chart" class="ch"></div></div>
 </div>
-<div class="card" style="margin-top:20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div class="lbl">Recent posts, last 30 days</div><label class="sub" style="cursor:pointer"><input type="checkbox" id="incr"> Include replies</label></div>
+<div class="card" style="margin-top:20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div class="lbl" id="ptl">Posts</div><label class="sub" style="cursor:pointer"><input type="checkbox" id="incr"> Include replies</label></div>
 <table><thead><tr><th>Post</th><th>Impressions</th><th>Likes</th><th>Replies</th><th>Reposts</th></tr></thead><tbody id="rows"></tbody></table>
 <div class="foot" id="foot">Metrics from public X reads, refreshed daily. Reposts include quotes. Retweets are not shown.</div></div>
 </div>
 <div class="ov" id="ov"><div class="pn" id="pn"></div></div>
 <script>
-const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')},dl=d=>d===today()?'Today (in progress)':d;
 const $=id=>document.getElementById(id),fmt=n=>n==null?'-':n.toLocaleString('en-US');
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let HANDLES=[];let D,cur=new URLSearchParams(location.search).get('acct')||localStorage.getItem('acct')||HANDLES[0];
+const Q=new URLSearchParams(location.search);
+const RANGES=[['today','Today'],['yesterday','Yesterday'],['week','This week'],['month','This month'],['all','All time']];
+const RLABEL={today:'today',yesterday:'yesterday',week:'this week',month:'this month',all:'all time'};
+let rg=Q.get('range')||localStorage.getItem('range')||'all';
+let CR={from:'',to:''};
+if(rg==='custom'){
+ if(Q.get('range')==='custom')CR={from:Q.get('from')||'',to:Q.get('to')||''};
+ else CR={from:localStorage.getItem('rangeFrom')||'',to:localStorage.getItem('rangeTo')||''};
+}
+if(!RANGES.some(r=>r[0]===rg)&&rg!=='custom')rg='all';
+if(rg==='custom'&&(!/^\d{4}-\d{2}-\d{2}$/.test(CR.from)||!/^\d{4}-\d{2}-\d{2}$/.test(CR.to)||CR.to<CR.from))rg='all';
+let HANDLES=[];let D,cur=Q.get('acct')||localStorage.getItem('acct')||HANDLES[0];
+let P=null,booted=false;
+const today=()=>(D&&D.today)||'',TZ=()=>(D&&D.tz)||'UTC',dl=d=>d&&d===today()?'Today (in progress)':(d||'');
+const pd=s=>{const p=(s||'').split('-');return new Date(Date.UTC(+p[0],p[1]-1,+p[2]))},isoD=d=>d.toISOString().slice(0,10),addD=(d,n)=>new Date(d.getTime()+n*86400000);
+const fmtDay=(s,o)=>new Date(s+'T00:00:00Z').toLocaleDateString('en-US',Object.assign({timeZone:'UTC'},o||{month:'short',day:'numeric'}));
+const dmin=(a,b)=>a<b?a:b,dmax=(a,b)=>a>b?a:b,ndays=(f,t)=>f&&t&&t>=f?Math.round((pd(t)-pd(f))/86400000)+1:0;
+const mob=()=>matchMedia('(max-width:820px)').matches;
+const addM=(m,n)=>{const q=m.split('-');return isoD(new Date(Date.UTC(+q[0],+q[1]-1+n,1))).slice(0,7)};
 function setTheme(t){document.documentElement.dataset.theme=t;localStorage.setItem('theme',t);$('tt').textContent=t==='dark'?'\u2600':'\u263E'}
 $('tt').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');setTheme(document.documentElement.dataset.theme);
-function dlt(h,days){const snaps=h.filter(s=>typeof s.followers==='number');if(snaps.length<2)return null;const last=snaps[snaps.length-1],cut=new Date(last.date);cut.setDate(cut.getDate()-days);
- let base=snaps[0];for(const s of snaps)if(new Date(s.date)<=cut)base=s;return last.followers-base.followers}
 function sign(v){return v==null?'<span class="sub">n/a</span>':`<span class="${v<0?'down':'up'}">${v>0?'+':''}${fmt(v)}</span>`}
 const EROWS=[['comments','Comments'],['new_followers','New followers'],['reshares','Reshares'],['likes','Likes']];
 function f1(n){const v=Math.round(n*10)/10;return (v===0?0:v).toFixed(1)}
 function trim1(n){const s=f1(n);return s.endsWith('.0')?s.slice(0,-2):s}
 function compact(n){const a=Math.abs(n),sign=n<0?'-':'';if(a>=1e6)return sign+trim1(a/1e6)+'m';if(a>=1000)return sign+trim1(a/1000)+'k';return fmt(n)}
 function shortText(s){s=(s||'').replace(/\s+/g,' ').trim();return s.length>42?s.slice(0,39)+'...':s}
-function dayHead(date){return date===today()?'Today (in progress)':new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})}
+function dayHead(date){return date===today()?'Today (in progress)':fmtDay(date,{weekday:'short',month:'short',day:'numeric',year:'numeric'})}
+function crLabel(f,t){if(!f||!t)return '';const y=f.slice(0,4)!==t.slice(0,4)||f.slice(0,4)!==today().slice(0,4),o=y?{month:'short',day:'numeric',year:'numeric'}:undefined;return f===t?fmtDay(f,o):fmtDay(f,o)+' to '+fmtDay(t,o)}
 function tipHTML(e,date){
  const head=dayHead(date);
  const scored=typeof e.score==='number'&&Number.isFinite(e.score);
@@ -109,6 +175,19 @@ function tipHTML(e,date){
  const color=scored&&e.score<0?'var(--down)':'var(--bar)';
  const note=e.backfilled?'<div class="sub" style="margin:2px 0 8px">followers not tracked yet</div>':'';
  return `<div class="lbl">${esc(head)}</div><div class="sc"><b style="color:${color}">${num}</b><span class="sub">${scored?'points':'no score'}</span>${delta}</div>${note}${rows}<div class="ft sub">${impr} impressions</div>${top}`}
+function bucketHead(g){const clip=g.days<g.full,extra=clip?`, ${g.days} of ${g.full} days`:'';
+ if(g.bucket==='week')return 'Week of '+fmtDay(g.date)+extra;
+ return fmtDay(g.date,{month:'long',year:'numeric'})+extra}
+function bucketTick(k,b){if(b==='week')return fmtDay(k);const mon=fmtDay(k,{month:'short'});return k.slice(5,7)==='01'?mon+' '+k.slice(0,4):mon}
+function bucketTip(g){const e=g.engagement||{};
+ const rows=EROWS.map(([k,lab])=>{const v=e[k];return `<div class="rw"><span>${lab}</span><span>${v==null?'-':fmt(v)}</span></div>`}).join('');
+ const impr=e.impressions==null?'-':compact(e.impressions);
+ const close=g.followers==null?'-':fmt(g.followers),when=g.last?` (${esc(fmtDay(g.last))})`:'';
+ const sub=esc(crLabel(g.from,g.to))+(g.days<g.full?' (clipped to the range)':`, ${g.days} days`)+(g.snaps<g.days?`, ${g.snaps} with data`:'');
+ return `<div class="lbl">${esc(bucketHead(g))}</div><div class="sub" style="margin-top:4px">${sub}</div>
+ <div class="sc"><b style="color:var(--bar)">${fmt(Math.round(e.score||0))}</b><span class="sub">points, summed</span></div>${rows}
+ <div class="ft sub">${impr} impressions<br>Followers at close: ${close}${when}</div>
+ <button type="button" class="zm" data-from="${g.from}" data-to="${g.to}">Zoom in to this ${esc(g.bucket)}</button>`}
 function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||(innerWidth<820?30:15);const W=opts.W||800,H=opts.H||220,P=opts.W?28:40,B=opts.bars||null,PR=B?(fs>20?78:46):10;if(!h.length)return '<div class="empty">No snapshots yet.</div>';
  const finite=v=>typeof v==='number'&&Number.isFinite(v),ys=h.map(s=>s[key]).filter(finite);if(!ys.length)return '<div class="empty">No data yet.</div>';
  const mn=Math.min(...ys),mx=Math.max(...ys),r=Math.max(mx-mn,4),lo=mn-r*.25,hi=mx+r*.25;
@@ -116,12 +195,12 @@ function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||
  const PL=B?Math.max(basePL,labelW):basePL;
  const parseDay=s=>{const p=s.split('-');return new Date(+p[0],p[1]-1,+p[2])};
  const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
- let nDays=h.length,slot=0,x;
+ let nDays=h.length,slot=0,x,keys=null;
  if(B){
-  const t0=parseDay(h[0].date),t1=parseDay(h[h.length-1].date);
-  nDays=Math.max(1,Math.round((t1-t0)/86400000)+1);
-  slot=(W-PL-PR)/nDays;
-  x=i=>PL+slot*(Math.round((parseDay(h[i].date)-t0)/86400000)+0.5);
+  if(opts.slots&&opts.slots.length)keys=opts.slots;else{const t0=parseDay(h[0].date),t1=parseDay(h[h.length-1].date);const n=Math.max(1,Math.round((t1-t0)/86400000)+1);
+   keys=Array.from({length:n},(_,i)=>iso(new Date(t0.getFullYear(),t0.getMonth(),t0.getDate()+i)))}
+  nDays=keys.length;slot=(W-PL-PR)/Math.max(nDays,1);const ki={};keys.forEach((k,i)=>{ki[k]=i});
+  x=i=>{const idx=ki[h[i].date];return PL+slot*((idx==null?i:idx)+0.5)};
  }else x=i=>h.length==1?W-PR:PL+(W-PL-PR)*i/(h.length-1);
  const y=v=>16+(H-36)*(1-(v-lo)/(hi-lo));
  let g='';
@@ -143,32 +222,40 @@ function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||
  }
  let bars='',ax2='',guide='',halo='',hits='';
  if(B){const vals=B.filter(v=>v>0);
-  const t0=parseDay(h[0].date),byDate={};
+  const byDate={};
   h.forEach((s,i)=>{byDate[s.date]={s,v:B[i]}});
-  const gap=Math.min(4,slot*0.15),bw=Math.max(1,slot-gap);
+  const wide=opts.bucket==='week'||opts.bucket==='month',gap=wide?slot*0.3:Math.min(4,slot*0.15),bw=Math.max(1,slot-gap);
   if(vals.length){const max=Math.max(...vals),raw=Math.max(max,1)/4,pow=Math.pow(10,Math.floor(Math.log10(raw))),n=raw/pow;
    const step=Math.max(1,(n<=1?1:n<=2?2:n<=5?5:10)*pow);
    const smax=Math.ceil(max/step)*step,yb=v=>(H-20)-(H*.48)*v/smax;
-   for(let i=0;i<nDays;i++){const ds=iso(new Date(t0.getFullYear(),t0.getMonth(),t0.getDate()+i)),row=byDate[ds],v=row?row.v:null;if(!(v>0))continue;
+   for(let i=0;i<nDays;i++){const ds=keys[i],row=byDate[ds],v=row?row.v:null;if(!(v>0))continue;
     const cx=PL+slot*(i+0.5),bh=Math.max(0,H-20-yb(v)),bf=!!(row.s.engagement&&row.s.engagement.backfilled);
     bars+=`<rect class="bar" data-date="${ds}" data-bf="${bf?1:0}" x="${(cx-bw/2).toFixed(1)}" y="${yb(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="${bf?'var(--mut)':'var(--bar)'}" fill-opacity="${bf?'0.45':'0.38'}" pointer-events="none"/>`}
    ax2+=`<text x="${W-2}" y="${Math.max(12,(yb(smax)-fs)).toFixed(1)}" text-anchor="end" fill="var(--bar)" font-size="${fs}" pointer-events="none">points</text>`;
    const nTicks=Math.round(smax/step);for(let i=0;i<=nTicks;i++){const rv=i*step;ax2+=`<text x="${W-2}" y="${(yb(rv)+4).toFixed(1)}" text-anchor="end" fill="var(--bar)" font-size="${fs}" pointer-events="none">${fmt(rv)}</text>`}}
   guide=`<line class="gline" y1="12" y2="${H-20}" stroke="var(--mut)" stroke-dasharray="3 3" stroke-opacity=".6" visibility="hidden" pointer-events="none"/>`;
   halo=`<circle class="ghalo" r="4.5" fill="var(--bg)" stroke="var(--acc)" stroke-width="2.5" visibility="hidden" pointer-events="none"/>`;
-  for(let i=0;i<nDays;i++){const ds=iso(new Date(t0.getFullYear(),t0.getMonth(),t0.getDate()+i)),row=byDate[ds],cx=PL+slot*(i+0.5);
+  for(let i=0;i<nDays;i++){const ds=keys[i],row=byDate[ds],cx=PL+slot*(i+0.5);
    const yv=row&&finite(row.s[key])?y(row.s[key]).toFixed(1):'';
    hits+=`<rect class="hit" data-date="${ds}" data-x="${cx.toFixed(1)}" data-y="${yv}" data-snap="${row?1:0}" width="0" height="0"/>`}
   hits+=`<rect class="plot" x="0" y="0" width="${W}" height="${H}" fill="transparent"/>`}
- return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;margin-top:10px${B?';cursor:pointer':''}" role="img" aria-label="${B?'Follower growth and daily engagement score':'Chart'}"><defs><linearGradient id="gr${key}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--acc)" stop-opacity=".4"/><stop offset="1" stop-color="var(--acc)" stop-opacity="0"/></linearGradient></defs>${g}${bars}${ax2}${line}<circle cx="${lp[0]}" cy="${lp[1]}" r="5" fill="var(--acc)" pointer-events="none"/>${guide}${halo}${hits}</svg>
- <div class="sub" style="display:flex;justify-content:space-between"><span>${h[0].date}</span><span>${dl(h[h.length-1].date)}</span></div>
+ const axisEnd=keys?keys[keys.length-1]:h[h.length-1].date,axisStart=keys?keys[0]:h[0].date;
+ let foot=`<div class="sub" style="display:flex;justify-content:space-between"><span>${axisStart}</span><span>${dl(axisEnd)}</span></div>`;
+ if(keys&&opts.bucket&&opts.bucket!=='day'){const step=Math.max(1,Math.ceil(nDays/8));
+  foot=`<div class="bk" style="grid-template-columns:repeat(${nDays},1fr);padding:0 ${(PR/W*100).toFixed(2)}% 0 ${(PL/W*100).toFixed(2)}%">${keys.map((k,i)=>`<span>${i%step===0?esc(opts.tick?opts.tick(k):k):''}</span>`).join('')}</div>`}
+ else if(opts.week&&keys){const names=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  foot=`<div class="wk" style="padding:0 ${(PR/W*100).toFixed(2)}% 0 ${(PL/W*100).toFixed(2)}%">${keys.map(k=>{const d=pd(k);return `<span>${names[(d.getUTCDay()+6)%7]} <b>${d.getUTCDate()}</b></span>`}).join('')}</div>`}
+ const per=opts.bucket&&opts.bucket!=='day'?opts.bucket:'day';
+ return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;margin-top:10px${B?';cursor:pointer':''}" role="img" aria-label="${B?'Follower growth and engagement score, one bar per '+per:'Chart'}"><defs><linearGradient id="gr${key}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--acc)" stop-opacity=".4"/><stop offset="1" stop-color="var(--acc)" stop-opacity="0"/></linearGradient></defs>${g}${bars}${ax2}${line}<circle cx="${lp[0]}" cy="${lp[1]}" r="5" fill="var(--acc)" pointer-events="none"/>${guide}${halo}${hits}</svg>
+ ${foot}
  ${h.filter(s=>finite(s[key])).length===1&&!opts.quiet?'<div class="empty">First snapshot taken '+h.filter(s=>finite(s[key]))[0].date+'. The growth line fills in as daily snapshots run.</div>':''}`}
 function hideTip(){const tip=$('tip');if(tip){tip.hidden=true;tip.dataset.pin='';tip.style.pointerEvents='none'}
  const svg=$('chart')&&$('chart').querySelector('svg');if(!svg)return;
  svg.querySelectorAll('.bar').forEach(r=>r.setAttribute('fill-opacity',r.dataset.bf==='1'?'0.45':'0.38'));
  const gl=svg.querySelector('.gline'),gh=svg.querySelector('.ghalo');
  if(gl)gl.setAttribute('visibility','hidden');if(gh)gh.setAttribute('visibility','hidden')}
-function bindTip(h){const root=$('chart'),svg=root.querySelector('svg');if(!svg)return;
+function zoomTo(f,t){hideTip();CR={from:f,to:t};rg='custom';load()}
+function bindTip(h,bk){const root=$('chart'),svg=root.querySelector('svg');if(!svg)return;
  const hits=[...svg.querySelectorAll('.hit')];if(!hits.length)return;
  const byDate={};h.forEach(s=>{byDate[s.date]=s});
  const tip=document.createElement('div');tip.className='tip';tip.id='tip';tip.hidden=true;tip.style.pointerEvents='none';root.appendChild(tip);
@@ -188,30 +275,61 @@ function bindTip(h){const root=$('chart'),svg=root.querySelector('svg');if(!svg)
   if(left>maxL)left=maxL;
   if(left<minL)left=minL;
   tip.style.left=left+'px';tip.style.top='16px'};
+ let fromTouch=false;
  const show=(i,pin)=>{if(i<0){hideTip();return}
   const date=hits[i].dataset.date,row=byDate[date];
-  if(!row||!row.engagement){tip.innerHTML=`<div class="lbl">${esc(dayHead(date))}</div><div class="sub" style="margin-top:6px">No snapshot</div>`}
+  if(bk)tip.innerHTML=row?bucketTip(row):`<div class="lbl">${esc(date)}</div><div class="sub" style="margin-top:6px">No snapshots</div>`;
+  else if(!row||!row.engagement){tip.innerHTML=`<div class="lbl">${esc(dayHead(date))}</div><div class="sub" style="margin-top:6px">No snapshot</div>`}
   else tip.innerHTML=tipHTML(row.engagement,date);
   tip.hidden=false;if(pin)tip.dataset.pin='1';
-  tip.style.pointerEvents=tip.dataset.pin==='1'?'auto':'none';highlight(i,!!(row&&row.engagement));place(i)};
+  tip.style.pointerEvents=tip.dataset.pin==='1'?'auto':'none';
+  highlight(i,!!(row&&(bk?typeof row.followers==='number':row.engagement)));place(i)};
  svg.addEventListener('pointermove',e=>{if(e.pointerType==='touch'||tip.dataset.pin==='1')return;show(idxFrom(e),false)});
- svg.addEventListener('pointerdown',e=>{show(idxFrom(e),true)});
+ svg.addEventListener('pointerdown',e=>{fromTouch=e.pointerType==='touch';show(idxFrom(e),true)});
+ if(bk){svg.addEventListener('click',e=>{if(fromTouch||e.pointerType==='touch')return;const i=idxFrom(e),g=i<0?null:byDate[hits[i].dataset.date];if(g&&g.from&&g.to)zoomTo(g.from,g.to)});
+  tip.addEventListener('click',e=>{const z=e.target.closest('.zm');if(z)zoomTo(z.dataset.from,z.dataset.to)})}
  svg.addEventListener('pointerleave',e=>{if(tip.dataset.pin==='1')return;if(e.relatedTarget&&tip.contains(e.relatedTarget))return;hideTip()});
  tip.addEventListener('pointerleave',e=>{if(tip.dataset.pin==='1')return;if(e.relatedTarget&&svg.contains(e.relatedTarget))return;hideTip()})}
 document.addEventListener('pointerdown',e=>{const ch=$('chart');if(ch&&ch.contains(e.target))return;hideTip()});
+function scoreBar(s){const e=s.engagement;return e&&typeof e.score==='number'&&e.score>0?e.score:null}
+function isBreakdown(a){const k=D.range&&D.range.key;if(k==='today'||k==='yesterday')return true;return k==='custom'&&a.from&&a.from===a.data_to}
+function buttonLabel(){const k=D.range.key;if(k==='custom')return crLabel(D.range.from,D.range.to);return (RANGES.find(r=>r[0]===k)||[, 'All time'])[1]}
+function deltaHTML(a){const d=a.delta||{};if(d.followers==null)return '<span class="sub">n/a</span>';
+ const k=D.range.key;let sub;
+ if(k==='custom'){sub=crLabel(a.from,a.data_to);sub+=d.baseline?', vs '+fmtDay(d.baseline)+' close':', since first snapshot'}
+ else sub=RLABEL[k]||k;
+ return sign(d.followers)+' <span class="sub">'+esc(sub)+'</span>'}
+function dayCard(e,date){const W=D.engagement_weights||{comments:3,new_followers:4,reshares:2,likes:1};
+ const rows=EROWS.map(([k,l])=>{const c=e[k]==null?0:+e[k]||0,w=W[k]||0;return [l,e[k],w,c*w]});
+ const tot=rows.reduce((s,r)=>s+Math.max(0,r[3]),0)||1;
+ let delta='';if(typeof e.score_delta==='number'){const d=e.score_delta;delta=`<span class="${d>0?'up':d<0?'down':'sub'}" style="margin-left:auto;font-size:13px">${d>0?'+':''}${f1(d)} vs 7-day avg</span>`}
+ let top='';if(e.top_post&&e.top_post.url)top=`<span class="sub">Top post: <a href="${esc(e.top_post.url)}" target="_blank" rel="noopener">${esc(shortText(e.top_post.text))}</a></span>`;
+ const impr=e.impressions==null?'-':compact(e.impressions);
+ return `<div class="bd"><div class="lbl">${esc(dayHead(date))}</div><div class="sc"><b>${fmt(Math.round(e.score||0))}</b><span class="sub">points</span>${delta}</div>
+ <div class="rw hd"><span>Category</span><span>Count</span><span>Weight</span><span>Points</span></div>
+ ${rows.map(([l,c,w,pt])=>`<div class="rw"><span>${l}<div class="mtr"><i style="width:${(Math.max(0,pt)/tot*100).toFixed(1)}%"></i></div></span><span>${c==null?'-':fmt(c)}</span><span class="sub">${'× '+w}</span><span class="pts">${fmt(Math.round(pt))}</span></div>`).join('')}
+ <div class="ft sub"><span>${impr} impressions</span>${top}</div></div>`}
+function postsTitle(a){const k=D.range.key;if(k==='custom')return 'Posts, '+crLabel(a.from,a.data_to)+' (in '+TZ()+')';return 'Posts, '+((RANGES.find(r=>r[0]===k)||[,k])[1])}
 function render(){const a=D.accounts[cur];if(!a){$('fc').textContent='No data';return}
  $('sw').innerHTML=HANDLES.map(h=>`<option value="${h}"${h==cur?' selected':''}>@${h}</option>`).join('');
- $('sw').onchange=e=>{cur=e.target.value;localStorage.setItem('acct',cur);render()};
- const h=a.history||[];
- if(!h.length){$('fc').textContent='-';$('fg').textContent='-';$('pc').textContent='-';$('delta').innerHTML='';$('d7').innerHTML='-';$('snap').textContent='No follower snapshot yet';$('chart').innerHTML='<div class="empty">No follower snapshots yet.</div>'}
- else{const last=h[h.length-1];$('fc').textContent=fmt(last.followers);$('fg').textContent=fmt(last.following);$('pc').textContent=fmt(last.posts);
- $('delta').innerHTML=sign(dlt(h,30))+' <span class="sub">last 30 days</span>';$('d7').innerHTML=sign(dlt(h,7));$('snap').textContent='Last snapshot: '+dl(last.date);
- const hasEng=h.some(s=>s.engagement);
- $('chart').innerHTML=chart(h,'followers',{H:hasEng?380:220,bars:hasEng?h.map(s=>{const e=s.engagement;return e&&typeof e.score==='number'&&e.score>0?e.score:null}):null});
- if(hasEng)bindTip(h)}
+ $('sw').onchange=e=>{closePicker(false);cur=e.target.value;localStorage.setItem('acct',cur);const u=pageURL();history.replaceState(null,'',u);render()};
+ $('rgl').textContent=buttonLabel();
+ const single=isBreakdown(a),h=a.history||[],bk=a.bucket||'day';
+ if(!a.first){$('fc').textContent='-';$('fg').textContent='-';$('pc').textContent='-';$('delta').innerHTML='';$('d7').innerHTML='-';$('snap').textContent='No follower snapshot yet';$('gb').textContent='';$('chl').textContent='Follower growth';$('lgd').style.display='';$('chart').innerHTML='<div class="empty">No follower snapshots yet.</div>'}
+ else{$('fc').textContent=fmt(a.followers);$('fg').textContent=fmt(a.following);$('pc').textContent=fmt(a.post_count);
+  $('delta').innerHTML=deltaHTML(a);
+  $('d7').innerHTML=`<span style="color:var(--bar)">${compact(Math.round(a.score||0))}</span>`;
+  $('snap').textContent=a.last_snapshot?'Last snapshot: '+dl(a.last_snapshot):'No follower snapshot yet';
+  $('gb').textContent=single?'':'By '+bk;
+  $('chl').textContent=single?'Engagement breakdown':'Follower growth';$('lgd').style.display=single?'none':'';
+  if(single){const row=h[h.length-1];$('chart').innerHTML=row&&row.engagement?dayCard(row.engagement,row.date):'<div class="empty">No engagement data for this day.</div>'}
+  else if(!h.length)$('chart').innerHTML='<div class="empty">No snapshots '+esc(RLABEL[D.range.key]||crLabel(a.from,a.data_to))+'.</div>';
+  else if(bk!=='day'){$('chart').innerHTML=chart(h,'followers',{H:380,slots:a.slots,bucket:bk,tick:k=>bucketTick(k,bk),bars:h.map(scoreBar)});bindTip(h,bk)}
+  else{const hasEng=h.some(s=>s.engagement);
+   $('chart').innerHTML=chart(h,'followers',{H:hasEng?380:220,slots:a.slots,week:D.range.key==='week',bars:hasEng?h.map(scoreBar):null});
+   if(hasEng)bindTip(h,'')}}
  $('ctc').style.display=(D.clickthroughs||[]).length?'':'none';const c=D.clickthroughs||[];
- $('ct').innerHTML=c.length?`<div class="big">${fmt(c.reduce((s,r)=>s+r.visits,0))}</div><div class="sub">visits from x.com and t.co, ${c[0].date} to ${c[c.length-1].date}</div>`
- :'';
+ $('ct').innerHTML=c.length?`<div class="big">${fmt(c.reduce((s,r)=>s+r.visits,0))}</div><div class="sub">visits from x.com and t.co, ${c[0].date} to ${c[c.length-1].date}</div>`:'';
  const inc=localStorage.getItem('incReplies')==='1';$('incr').checked=inc;$('incr').onchange=e=>{localStorage.setItem('incReplies',e.target.checked?'1':'0');render()};
  const shown=(a.posts||[]).filter(p=>inc||!p.is_reply);
  const anyArchive=shown.some(p=>p.source==='archive');
@@ -220,21 +338,105 @@ function render(){const a=D.accounts[cur];if(!a){$('fc').textContent='No data';r
  if(allLive) note+=' Reposts include quotes.';
  if(anyArchive) note+=' Archive rows have no reply, quote or impression counts.';
  note+=' Retweets are not shown.';
+ const cap=12,total=a.posts_total||shown.length;
+ if(total>cap)note='Showing the '+cap+' most recent of '+fmt(total)+' posts. '+note;
  $('foot').textContent=note;
- $('rows').innerHTML=shown.map(p=>{return `<tr class="pr" data-id="${p.id}"><td><a href="#post/${p.id}">${esc(p.text.length>120?p.text.slice(0,117)+'...':p.text)}</a><div class="d">${new Date(p.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div></td>
- <td class="n" data-l="Impr">${fmt(p.impressions)}</td><td class="n" data-l="Likes">${fmt(p.likes)}</td><td class="n" data-l="Replies">${fmt(p.replies)}</td><td class="n" data-l="Reposts">${fmt(p.reposts)}</td></tr>`}).join('')||'<tr><td><div class="empty" style="text-align:center">No posts in the last 30 days</div></td></tr>'}
+ $('ptl').textContent=postsTitle(a);
+ const rows=shown.slice(0,cap);
+ $('rows').innerHTML=rows.map(p=>{return `<tr class="pr" data-id="${p.id}"><td><a href="#post/${p.id}">${esc(p.text.length>120?p.text.slice(0,117)+'...':p.text)}</a><div class="d">${new Date(p.created_at).toLocaleDateString('en-US',{timeZone:TZ(),month:'short',day:'numeric',year:'numeric'})}</div></td>
+ <td class="n" data-l="Impr">${fmt(p.impressions)}</td><td class="n" data-l="Likes">${fmt(p.likes)}</td><td class="n" data-l="Replies">${fmt(p.replies)}</td><td class="n" data-l="Reposts">${fmt(p.reposts)}</td></tr>`}).join('')||'<tr><td><div class="empty" style="text-align:center">No posts '+(D.range.key==='custom'?esc(crLabel(a.from,a.data_to)):esc(RLABEL[D.range.key]||''))+'</div></td></tr>'}
+function rangeOf(k){const t=pd(today());
+ if(k==='today')return {from:today(),to:today()};
+ if(k==='yesterday'){const y=isoD(addD(t,-1));return {from:y,to:y}}
+ if(k==='week'){const f=addD(t,-((t.getUTCDay()+6)%7));return {from:isoD(f),to:isoD(addD(f,6))}}
+ if(k==='month'){const f=new Date(Date.UTC(t.getUTCFullYear(),t.getUTCMonth(),1));const e=new Date(Date.UTC(t.getUTCFullYear(),t.getUTCMonth()+1,0));return {from:isoD(f),to:isoD(e)}}
+ if(k==='all'){const a=D.accounts[cur];return {from:(a&&a.first)||today(),to:today()}}
+ return {from:CR.from,to:CR.to}}
+function span(){const a=D.accounts[cur];
+ if(P.hover){const R=rangeOf(P.hover);return {k:P.hover,from:dmax(R.from,P.min),to:dmin(R.to,P.max)}}
+ if(P.anchor&&P.hd)return {k:'custom',from:dmin(P.anchor,P.hd),to:dmax(P.anchor,P.hd),pending:1};
+ return {k:P.k,from:P.from,to:P.to}}
+function openPicker(){const a=D.accounts[cur];if(!a)return;const R=rangeOf(rg);
+ P={k:rg,min:a.first||today(),max:today(),anchor:null,hd:null,hover:null};
+ P.from=dmax(R.from||P.min,P.min);P.to=dmin(R.to||P.max,P.max);if(P.from>P.to)P.from=P.to;P.focus=P.to;
+ P.n=mob()?1:2;P.view=addM((P.to||today()).slice(0,7),1-P.n);if(P.view<P.min.slice(0,7))P.view=P.min.slice(0,7);
+ const pr=RANGES.map(([k,l])=>`<button type="button" class="pr" data-k="${k}">${l}</button>`).join('');
+ $('rp').innerHTML=`<div class="rpl" role="group" aria-label="Preset ranges">${pr}<span class="pr cu" data-k="custom" aria-pressed="false">Custom</span></div><div class="rpc"><div class="rpm" id="rpm"></div><div class="rph sub" id="rph"></div></div>
+ <div class="rpf"><div class="sm sub" id="rps" aria-live="polite"></div><button type="button" class="cn" id="rpx">Cancel</button><button type="button" class="ap" id="rpa">Apply</button></div>`;
+ $('rp').hidden=$('rpbk').hidden=false;$('rgb').setAttribute('aria-expanded','true');
+ $('rp').querySelectorAll('button.pr').forEach(b=>{const k=b.dataset.k;
+  b.onclick=()=>applyRange(k);b.onmouseenter=b.onfocus=()=>{P.hover=k;paint()};b.onmouseleave=b.onblur=()=>{if(P&&P.hover===k){P.hover=null;paint()}}});
+ $('rpx').onclick=()=>closePicker(true);$('rpa').onclick=applyDraft;
+ $('rpm').onkeydown=calKey;drawCal();
+ const act=$('rp').querySelector(`button.pr[data-k="${rg}"]`);if(act&&!mob())act.focus({preventScroll:true})}
+function closePicker(refocus){if(!P)return;P=null;$('rp').hidden=$('rpbk').hidden=true;$('rp').innerHTML='';$('rgb').setAttribute('aria-expanded','false');if(refocus)$('rgb').focus()}
+function month(m,first,last){const d0=pd(m+'-01'),off=(d0.getUTCDay()+6)%7,len=new Date(Date.UTC(d0.getUTCFullYear(),d0.getUTCMonth()+1,0)).getUTCDate();
+ const name=d0.toLocaleDateString('en-US',{timeZone:'UTC',month:'long',year:'numeric'});
+ const prevOk=addM(P.view,-1)>=P.min.slice(0,7),nextOk=addM(P.view,P.n)<=P.max.slice(0,7);
+ let g='<span></span>'.repeat(off);
+ for(let i=1;i<=len;i++){const ds=m+'-'+String(i).padStart(2,'0'),dis=ds<P.min||ds>P.max;
+  g+=`<button type="button" role="gridcell" data-d="${ds}"${dis?' disabled':''} tabindex="-1" aria-label="${fmtDay(ds,{weekday:'long',month:'long',day:'numeric',year:'numeric'})}${ds===P.max?', today':''}">${i}</button>`}
+ return `<div class="mo"><div class="moh"><button type="button" class="nav${first?'':' ph'}" data-m="-1" aria-label="Previous month"${prevOk?'':' disabled'}>\u2039</button><span>${name}</span><button type="button" class="nav${last?'':' ph'}" data-m="1" aria-label="Next month"${nextOk?'':' disabled'}>\u203a</button></div>
+ <div class="dw" aria-hidden="true">${['Mo','Tu','We','Th','Fr','Sa','Su'].map(w=>`<span>${w}</span>`).join('')}</div><div class="dg" role="grid" aria-label="${name}">${g}</div></div>`}
+function drawCal(){if(!P)return;let h='';for(let i=0;i<P.n;i++)h+=month(addM(P.view,i),i===0,i===P.n-1);$('rpm').innerHTML=h;
+ $('rpm').querySelectorAll('.nav').forEach(b=>b.onclick=()=>{P.view=addM(P.view,+b.dataset.m);drawCal()});
+ $('rpm').querySelectorAll('.dg button').forEach(b=>{b.onclick=()=>pickDay(b.dataset.d);b.onmouseenter=()=>{if(P.anchor&&P.hd!==b.dataset.d){P.hd=b.dataset.d;paint()}}});paint()}
+function paint(){if(!P)return;const S=span();
+ $('rpm').querySelectorAll('.dg button').forEach(b=>{const ds=b.dataset.d,inr=!b.disabled&&ds>=S.from&&ds<=S.to;
+  b.className=[inr&&'in',inr&&ds===S.from&&'s',inr&&ds===S.to&&'e',ds===P.max&&'td'].filter(Boolean).join(' ');
+  b.setAttribute('aria-selected',String(inr));b.tabIndex=ds===P.focus?0:-1});
+ const sel=P.hover?null:S.k;
+ $('rp').querySelectorAll('.pr').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.k===sel));b.classList.toggle('hv',b.dataset.k===P.hover)});
+ const n=ndays(S.from,S.to),lbl=S.k==='custom'?'Custom':(RANGES.find(r=>r[0]===S.k)||[,S.k])[1];
+ $('rps').innerHTML=`<b>${esc(lbl)}</b>: ${esc(crLabel(S.from,S.to))}, ${n} day${n===1?'':'s'}${P.anchor&&!P.hover?' (pick an end day)':''}`;
+ const a=D.accounts[cur];$('rph').textContent=`Available ${fmtDay(P.min,{month:'short',day:'numeric',year:'numeric'})} to today${a.start&&a.first&&a.start>=a.first?' (account start date)':''}. Days in ${TZ()}.`;
+ $('rpa').disabled=!!P.hover}
+function pickDay(d){P.hover=null;P.focus=d;
+ if(!P.anchor){P.anchor=d;P.hd=d;P.from=P.to=d;P.k='custom'}else{P.from=dmin(P.anchor,d);P.to=dmax(P.anchor,d);P.anchor=P.hd=null}
+ paint()}
+function calKey(e){const b=e.target.closest('.dg button');if(!b||!P)return;let d=pd(b.dataset.d);const wd=(d.getUTCDay()+6)%7;
+ const mv={ArrowLeft:-1,ArrowRight:1,ArrowUp:-7,ArrowDown:7,Home:-wd,End:6-wd}[e.key];
+ if(mv!==undefined)d=addD(d,mv);else if(e.key==='PageUp'||e.key==='PageDown'){const q=isoD(d).split('-');d=new Date(Date.UTC(+q[0],+q[1]-1+(e.key==='PageUp'?-1:1),Math.min(+q[2],28)))}else return;
+ e.preventDefault();const ds=dmax(P.min,dmin(P.max,isoD(d)));P.focus=ds;if(P.anchor)P.hd=ds;
+ const m=ds.slice(0,7);if(m<P.view)P.view=m;else if(m>addM(P.view,P.n-1))P.view=addM(m,1-P.n);else{paint();const el=$('rpm').querySelector(`[data-d="${ds}"]`);if(el)el.focus();return}
+ drawCal();const el=$('rpm').querySelector(`[data-d="${ds}"]`);if(el)el.focus()}
+function crCheck(f,t,min,max){const ok=/^\d{4}-\d{2}-\d{2}$/;
+ if(!ok.test(f||'')||!ok.test(t||''))return 'Pick a start and an end date.';
+ if(t<f)return 'End must be on or after start.';
+ if(f<min)return 'Start is before the first day available.';
+ if(t>max)return 'End is after today.';return ''}
+function applyRange(k){closePicker(true);rg=k;load()}
+async function applyDraft(){if(!P||P.hover)return;if(P.anchor){P.from=P.to=P.anchor;P.anchor=null}
+ if(P.k!=='custom')return applyRange(P.k);
+ const err=crCheck(P.from,P.to,P.min,P.max);if(err){$('rps').innerHTML=`<span class="down">${esc(err)}</span>`;return}
+ $('rpa').disabled=true;const r=await fetch('/api/data?'+new URLSearchParams({range:'custom',from:P.from,to:P.to}));
+ if(!r.ok){$('rps').innerHTML=`<span class="down">${esc((await r.text()).trim())}</span>`;$('rpa').disabled=false;return}
+ D=await r.json();CR={from:P.from,to:P.to};rg='custom';closePicker(true);saveRange();bootHandles();render()}
+$('rgb').onclick=()=>{if(!D)return;P?closePicker(true):openPicker()};
+document.addEventListener('pointerdown',e=>{if(P&&!e.target.closest('.rp')&&!e.target.closest('#rgb'))closePicker(false)});
+function pageURL(){const u=new URL(location.href);u.searchParams.set('range',rg);
+ if(rg==='custom'){u.searchParams.set('from',CR.from);u.searchParams.set('to',CR.to)}else{u.searchParams.delete('from');u.searchParams.delete('to')}
+ if(cur)u.searchParams.set('acct',cur);return u}
+function saveRange(){localStorage.setItem('range',rg);
+ if(rg==='custom'){localStorage.setItem('rangeFrom',CR.from);localStorage.setItem('rangeTo',CR.to)}
+ history.replaceState(null,'',pageURL())}
+function bootHandles(){const ks=Object.keys(D.accounts||{}).sort();HANDLES=(D.order||[]).filter(h=>D.accounts[h]);ks.forEach(h=>{if(!HANDLES.includes(h))HANDLES.push(h)});if(!D.accounts[cur])cur=HANDLES[0]}
+async function load(){const p=new URLSearchParams({range:rg});if(rg==='custom'){p.set('from',CR.from);p.set('to',CR.to)}
+ const r=await fetch('/api/data?'+p);
+ if(!r.ok){if(rg!=='all'){rg='all';return load()}$('fc').textContent='Error';return}
+ D=await r.json();bootHandles();saveRange();render();if(!booted){booted=true;route()}}
 document.addEventListener('click',e=>{const tr=e.target.closest('tr.pr');if(tr&&!e.target.closest('a')){location.hash='post/'+tr.dataset.id}});
-$('ov').onclick=e=>{if(e.target.id==='ov')closeP()};addEventListener('keydown',e=>{if(e.key==='Escape'){hideTip();closeP()}});
+$('ov').onclick=e=>{if(e.target.id==='ov')closeP()};addEventListener('keydown',e=>{if(e.key==='Escape'){if(P){closePicker(true);return}hideTip();closeP()}});
 function closeP(){if(location.hash.startsWith('#post/'))history.pushState('',document.title,location.pathname+location.search);$('ov').classList.remove('open')}
 async function openP(id){const r=await fetch('/api/post/'+id);if(!r.ok){$('pn').innerHTML='<button class="x" onclick="closeP()" aria-label="Close">\u00d7</button><div class="empty">Post not found.</div>';$('ov').classList.add('open');return}
  const p=await r.json(),h=p.history,last=h[h.length-1],prev=h.length>1?h[h.length-2]:null;
  const M=[['impressions','Impressions'],['likes','Likes'],['replies','Replies'],['reposts','Reposts']];
- $('pn').innerHTML=`<button class="x" onclick="closeP()" aria-label="Close">\u00d7</button><div class="lbl">@${p.account} \u00b7 ${new Date(p.created_at).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}</div>
+ $('pn').innerHTML=`<button class="x" onclick="closeP()" aria-label="Close">\u00d7</button><div class="lbl">@${p.account} \u00b7 ${new Date(p.created_at).toLocaleString('en-US',{timeZone:TZ(),month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}</div>
  <div class="ptext">${esc(p.text)}</div><a class="plink" href="${p.url}" target="_blank" rel="noopener">View on x.com \u2197</a>
  <div class="sub" style="margin-top:6px">${h.length} daily snapshot${h.length==1?'':'s'}, ${h[0].date} to ${dl(last.date)}</div>
  <div class="mg">${M.map(([k,l])=>`<div class="card"><div class="lbl">${l}</div><div class="mv">${fmt(last[k])}</div><div class="sub">${prev?(last[k]==null||prev[k]==null?'<span class="sub">-</span>':sign(last[k]-prev[k]))+' since '+prev.date:'first snapshot'}</div>${chart(h,k,{W:300,H:120,fs:12,quiet:1})}</div>`).join('')}</div>
  ${h.length<2?'<div class="empty">Charts fill in as daily snapshots run.</div>':''}`;$('ov').classList.add('open')}
 function route(){const m=location.hash.match(/^#post\/(\d+)$/);if(m)openP(m[1]);else $('ov').classList.remove('open')}
 addEventListener('hashchange',route);
-fetch('/api/data').then(r=>r.json()).then(d=>{D=d;const ks=Object.keys(D.accounts).sort();HANDLES=(D.order||[]).filter(h=>D.accounts[h]);ks.forEach(h=>{if(!HANDLES.includes(h))HANDLES.push(h)});if(!D.accounts[cur])cur=HANDLES[0];render();route()}).catch(e=>{$('fc').textContent='Error'});
+load().catch(()=>{$('fc').textContent='Error'});
 </script></body></html>
