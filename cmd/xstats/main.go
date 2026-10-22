@@ -214,16 +214,16 @@ func ingestBytes(db *sql.DB, b []byte) error {
 	return nil
 }
 
-func apiData(db *sql.DB) (any, error) {
+func apiData(db *sql.DB, allPosts bool) (any, error) {
 	out := map[string]any{
-		"generated":          time.Now().Format(time.RFC3339),
+		"generated":          timeNow().Format(time.RFC3339),
 		"engagement_weights": engagementWeights(),
 	}
 	loc, err := statsLocation()
 	if err != nil {
 		return nil, err
 	}
-	today := time.Now().In(loc).Format("2006-01-02")
+	today := timeNow().In(loc).Format("2006-01-02")
 	accts := map[string]any{}
 	rows, err := db.Query(`SELECT handle,name,avatar FROM accounts`)
 	if err != nil {
@@ -287,7 +287,19 @@ func apiData(db *sql.DB) (any, error) {
 			}
 		}
 		var posts []map[string]any
-		r, _ = db.Query(`SELECT post_id,text,created_at,impressions,likes,replies,reposts,is_reply,COALESCE(source,'live') FROM post_metrics m WHERE account=? AND created_at>=? AND date=(`+preferLiveDateSQL(false)+`) ORDER BY created_at DESC LIMIT 100`, a.h, time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339))
+		q := `SELECT post_id,text,created_at,impressions,likes,replies,reposts,is_reply,COALESCE(source,'live') FROM post_metrics m WHERE account=?`
+		args := []any{a.h}
+		if !allPosts {
+			// The unscoped page lists the last 30 days. A ranged request
+			// loads every post and the range filter trims it.
+			q += ` AND created_at>=?`
+			args = append(args, timeNow().UTC().AddDate(0, 0, -30).Format(time.RFC3339))
+		}
+		q += ` AND date=(` + preferLiveDateSQL(false) + `) ORDER BY created_at DESC`
+		if !allPosts {
+			q += ` LIMIT 100`
+		}
+		r, _ = db.Query(q, args...)
 		for r.Next() {
 			var id, t, c, src string
 			var i, rp *int
@@ -390,9 +402,19 @@ func newMux(db *sql.DB, tok string) *http.ServeMux {
 	registerIcons(mux, sub)
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	mux.HandleFunc("/api/data", func(w http.ResponseWriter, r *http.Request) {
-		d, err := apiData(db)
+		key, from, to, legacy, err := parseRangeQuery(r.URL.Query())
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			http.Error(w, err.Error(), statusCode(err))
+			return
+		}
+		var d any
+		if legacy {
+			d, err = apiData(db, false)
+		} else {
+			d, err = apiDataRanged(db, key, from, to)
+		}
+		if err != nil {
+			http.Error(w, err.Error(), statusCode(err))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
