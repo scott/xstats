@@ -21,10 +21,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          assets=(
+            dist/xstats-linux-amd64
+            dist/xstats-linux-arm64
+            dist/xstats.service
+            dist/Caddyfile.tmpl
+            dist/set-auth.sh
+            dist/SHA256SUMS
+          )
+          if [ -f dist/bootstrap.sh ]; then
+            assets+=(dist/bootstrap.sh)
+          fi
           gh release create "$GITHUB_REF_NAME" \
             --verify-tag \
             --title "$GITHUB_REF_NAME" \
-            --notes "Prebuilt CGO_ENABLED=0 binaries for linux/amd64 and linux/arm64. Verify with: sha256sum -c SHA256SUMS" \
-            dist/xstats-linux-amd64 \
-            dist/xstats-linux-arm64 \
-            dist/SHA256SUMS
+            --notes "Prebuilt CGO_ENABLED=0 binaries for linux/amd64 and linux/arm64, plus xstats.service, Caddyfile.tmpl, set-auth.sh, and bootstrap.sh when that file is in the repo. Verify with: sha256sum -c SHA256SUMS" \
+            "${assets[@]}"

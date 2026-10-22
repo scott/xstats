@@ -62,7 +62,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-X main.versi
 
 Without those `-X` flags the command prints `dev` and the commit from Go's embedded build info (`vcs.revision`, with `-dirty` when `vcs.modified` is true), or `unknown` when no commit is available.
 
-Pushing a `v*` tag publishes a [GitHub release](https://github.com/scott/xstats/releases) with `CGO_ENABLED=0` binaries for linux/amd64 and linux/arm64 (`xstats-linux-amd64`, `xstats-linux-arm64`) and a `SHA256SUMS` file. The release stamps `main.version` with the tag and `main.commit` with the commit. Download the binary and `SHA256SUMS` into the same directory, then verify:
+Pushing a `v*` tag publishes a [GitHub release](https://github.com/scott/xstats/releases) with `CGO_ENABLED=0` binaries for linux/amd64 and linux/arm64 (`xstats-linux-amd64`, `xstats-linux-arm64`), `xstats.service`, `Caddyfile.tmpl`, `set-auth.sh` (`bootstrap.sh` when that file is in the repo), and a `SHA256SUMS` file. The release stamps `main.version` with the tag and `main.commit` with the commit. Download the assets and `SHA256SUMS` into the same directory, then verify:
 
 ```
 sha256sum -c SHA256SUMS
