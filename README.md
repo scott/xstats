@@ -218,10 +218,12 @@ What you give up: there is no public URL and no TLS, and the dashboard is viewab
    ~/.local/bin/xstats ingest --db ~/.local/share/xstats/xstats.db snapshot.json
    ```
 
-   Or POST to the running server. `push.sh` takes one file and reads the token file from step 2. `STATS_URL` is required. If `~/.config/xstats/deploy.env` exists, `push.sh` sources it, and a `STATS_URL` in that file replaces the one on the command line.
+   Or POST to the running server. `push.sh` takes one file and reads the token file from step 2. `STATS_URL` is required.
+
+   Warning: if `~/.config/xstats/deploy.env` exists (e.g. on a machine that also deploys), `push.sh` currently lets its `STATS_URL` override yours, so a local push can go to your server. Until #22 is fixed, set `XSTATS_DEPLOY_ENV=/dev/null` for local pushes or remove `deploy.env`.
 
    ```
-   STATS_URL=http://127.0.0.1:8080 snapshot/push.sh snapshot.json
+   XSTATS_DEPLOY_ENV=/dev/null STATS_URL=http://127.0.0.1:8080 snapshot/push.sh snapshot.json
    ```
 
 ### Moving to a server
