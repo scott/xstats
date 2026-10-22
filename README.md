@@ -57,10 +57,18 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/xstats ./cmd/xstats
 A release build stamps the version and commit that `xstats version` prints:
 
 ```
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$(git describe --tags --always) -X main.commit=$(git rev-parse HEAD)" -o bin/xstats ./cmd/xstats
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-X main.version=$(git describe --tags --always) -X main.commit=$(git rev-parse HEAD)" -o bin/xstats ./cmd/xstats
 ```
 
 Without those `-X` flags the command prints `dev` and the commit from Go's embedded build info (`vcs.revision`, with `-dirty` when `vcs.modified` is true), or `unknown` when no commit is available.
+
+Pushing a `v*` tag publishes a [GitHub release](https://github.com/scott/xstats/releases) with `CGO_ENABLED=0` binaries for linux/amd64 and linux/arm64 (`xstats-linux-amd64`, `xstats-linux-arm64`), `xstats.service`, `Caddyfile.tmpl`, `set-auth.sh` (`bootstrap.sh` when that file is in the repo), and a `SHA256SUMS` file. The release stamps `main.version` with the tag and `main.commit` with the commit. Download the assets and `SHA256SUMS` into the same directory, then verify:
+
+```
+sha256sum -c SHA256SUMS
+```
+
+`scripts/build-release.sh <version> <commit> <outdir>` is the build the release workflow runs. It passes `-trimpath` so local paths are not embedded in the binaries.
 
 ## Favicon
 
