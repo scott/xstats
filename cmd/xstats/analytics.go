@@ -14,11 +14,17 @@ import (
 // Analytics CSVs are the posts export and the account overview export from
 // x.com/i/account_analytics. Columns are matched by header name.
 //
-// analyticsDateLayout is the only Date text this importer accepts. The offset
-// is part of the value so the instant is unambiguous. The stored overview day
-// is that instant's calendar date in XSTATS_TZ (see statsLocation), not a
-// hardcoded zone. This layout has not been checked against a real export.
-const analyticsDateLayout = "2006-01-02 15:04:05 -0700"
+// A Date cell is a calendar day, quoted in the file because it contains
+// commas. The value shape was checked against real exports on 2026-10-21.
+// Days 1 through 9 were not in those files, so both paddings are accepted.
+// The overview day is that calendar date with no XSTATS_TZ conversion.
+// XSTATS_TZ still applies where an instant is turned into a day.
+const analyticsDateExample = "Wed, Oct 21, 2026"
+
+var analyticsDateLayouts = []string{
+	"Mon, Jan 2, 2006",
+	"Mon, Jan 02, 2006",
+}
 
 const (
 	layoutPosts    = "posts"
@@ -61,11 +67,6 @@ func importAnalytics(db *sql.DB, csvPath, accountFlag string) error {
 }
 
 func applyAnalytics(db *sql.DB, csvPath, accountFlag string) (string, error) {
-	// Fail before any write when the zone is unusable. Overview days need it,
-	// and a posts file is rejected the same way so a bad env does not half-apply.
-	if _, err := statsLocation(); err != nil {
-		return "", err
-	}
 	headers, records, err := readAnalyticsCSV(csvPath)
 	if err != nil {
 		return "", err
@@ -273,7 +274,7 @@ func applyPostsAnalytics(db *sql.DB, headers []string, records [][]string, accou
 			return "", fmt.Errorf("analytics csv: data row %d: column Post id: duplicate of data row %d", row, prev)
 		}
 		seen[id] = row
-		if _, err := parseAnalyticsInstant(rec[idx["Date"]]); err != nil {
+		if _, err := parseAnalyticsDate(rec[idx["Date"]]); err != nil {
 			return "", fmt.Errorf("analytics csv: data row %d: column Date: %w", row, err)
 		}
 		impr, err := parseAnalyticsCount(rec[idx["Impressions"]])
@@ -404,20 +405,15 @@ type overviewRecord struct {
 }
 
 func applyOverviewAnalytics(db *sql.DB, headers []string, records [][]string, account string, ignored []string) (string, error) {
-	loc, err := statsLocation()
-	if err != nil {
-		return "", err
-	}
 	idx := indexHeaders(headers)
 	parsed := make([]overviewRecord, 0, len(records))
 	seen := map[string]int{}
 	for i, rec := range records {
 		row := i + 1
-		instant, err := parseAnalyticsInstant(rec[idx["Date"]])
+		day, err := parseAnalyticsDate(rec[idx["Date"]])
 		if err != nil {
 			return "", fmt.Errorf("analytics csv: data row %d: column Date: %w", row, err)
 		}
-		day := instant.In(loc).Format("2006-01-02")
 		if prev, ok := seen[day]; ok {
 			return "", fmt.Errorf("analytics csv: data row %d: column Date: same day as data row %d (%s)", row, prev, day)
 		}
@@ -497,15 +493,22 @@ func indexHeaders(headers []string) map[string]int {
 	return m
 }
 
-func parseAnalyticsInstant(cell string) (time.Time, error) {
+// parseAnalyticsDate accepts only "Mon, Jan 2, 2006" and "Mon, Jan 02, 2006"
+// after trimming. The result is that calendar day as YYYY-MM-DD. Go's parser
+// ignores a wrong weekday, so the cell must equal the formatted value.
+func parseAnalyticsDate(cell string) (string, error) {
+	cell = strings.TrimSpace(cell)
 	if cell == "" {
-		return time.Time{}, fmt.Errorf("missing: want a timestamp like \"2026-10-22 03:30:00 +0000\"")
+		return "", fmt.Errorf("missing: want a date like %q", analyticsDateExample)
 	}
-	t, err := time.Parse(analyticsDateLayout, cell)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("%q: want a timestamp like \"2026-10-22 03:30:00 +0000\"", cell)
+	for _, layout := range analyticsDateLayouts {
+		t, err := time.Parse(layout, cell)
+		if err != nil || t.Format(layout) != cell {
+			continue
+		}
+		return t.Format("2006-01-02"), nil
 	}
-	return t, nil
+	return "", fmt.Errorf("%q: want a date like %q", cell, analyticsDateExample)
 }
 
 func parseAnalyticsCount(cell string) (int64, error) {

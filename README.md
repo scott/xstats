@@ -176,9 +176,9 @@ The header row picks the export. Columns match by name, so order does not matter
 
 The posts export only updates posts already in the database. On an archive row it fills a NULL impression count and a NULL reply count. A live snapshot is left alone, including a live NULL impression. Likes, reposts, and text are not changed. Posts that are not in the database are skipped and counted. A later file does not replace a count that is already stored. A second run reports 0 updates.
 
-The overview export stores each day's New follows and Unfollows in `daily_follows`. `source` is `analytics`. `--account` is required, because the file has no handle. The handle is lowercased and a leading `@` is stripped. The calendar day is the Date instant in `XSTATS_TZ`, not a fixed zone. A day that already has a follower snapshot is not written. A day already stored is left as it was, including when the file's counts changed. Creating the account row does not set `last_ingest`. A second run reports 0 updates.
+The overview export stores each day's New follows and Unfollows in `daily_follows`. `source` is `analytics`. `--account` is required, because the file has no handle. The handle is lowercased and a leading `@` is stripped. The Date cell is a calendar day and is stored as that day, with no `XSTATS_TZ` shift. A day that already has a follower snapshot is not written. A day already stored is left as it was, including when the file's counts changed. Creating the account row does not set `last_ingest`. A second run reports 0 updates.
 
-Date cells must look like `2026-10-22 03:30:00 +0000` (`YYYY-MM-DD HH:MM:SS ±HHMM`, offset required). Any other shape is an error and writes nothing. That format has not been checked against a real export's date values.
+Date cells look like `Wed, Oct 21, 2026`. The file quotes that field because it contains commas. Spaces around the value are ignored. Both `Oct 6` and `Oct 06` are accepted. A wrong weekday, a bare `YYYY-MM-DD`, or a timestamp is an error that names the row and the value, and the import writes nothing. The shape was checked against real posts and overview exports on 2026-10-21. Only days 16 to 22 were in those files, so the padding for days 1 to 9 is not confirmed. No real export rows are in this repo.
 
 ## Engagement score
 
