@@ -54,6 +54,14 @@ go test ./...
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/xstats ./cmd/xstats
 ```
 
+A release build stamps the version and commit that `xstats version` prints:
+
+```
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$(git describe --tags --always) -X main.commit=$(git rev-parse HEAD)" -o bin/xstats ./cmd/xstats
+```
+
+Without those `-X` flags the command prints `dev` and the commit from Go's embedded build info (`vcs.revision`, with `-dirty` when `vcs.modified` is true), or `unknown` when no commit is available.
+
 ## Favicon
 
 The mark is a growth chart on a `#07090d` tile: bars `#a371f7`, line and dot `#1d9bf0` (the `--bar` and `--acc` values in `cmd/xstats/web/index.html`). The outline is `#3d4a5c`, lighter than the page border `#1f2733`, so the tile still shows up on a dark browser tab and still reads on a light one.
