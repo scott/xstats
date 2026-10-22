@@ -17,7 +17,7 @@ mkdir -p "$outdir"
 ldflags="-X main.version=${version} -X main.commit=${commit}"
 for arch in amd64 arm64; do
   CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
-    go build -ldflags "$ldflags" -o "$outdir/xstats-linux-$arch" ./cmd/xstats
+    go build -trimpath -ldflags "$ldflags" -o "$outdir/xstats-linux-$arch" ./cmd/xstats
 done
 
 (
