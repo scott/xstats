@@ -36,6 +36,7 @@ func openDB(p string) *sql.DB {
 		log.Fatal(err)
 	}
 	db.Exec(`ALTER TABLE post_metrics ADD COLUMN is_reply INT DEFAULT 0`) // no-op if present
+	db.Exec(`ALTER TABLE accounts ADD COLUMN last_ingest TEXT`)           // no-op if present
 	db.Exec(`UPDATE post_metrics SET is_reply=1 WHERE text LIKE '@%'`)
 	// impressions has always been INT without NOT NULL, so existing rows can
 	// already hold NULL. Nothing is rewritten: a stored 0 stays 0.
@@ -108,13 +109,16 @@ func ingestBytes(db *sql.DB, b []byte) error {
 	if r.Date == "" {
 		r.Date = time.Now().Format("2006-01-02")
 	}
+	ingestedAt := time.Now().UTC().Format(time.RFC3339)
 	tx, _ := db.Begin()
 	defer tx.Rollback()
 	n := 0
 	for h, a := range r.Accounts {
 		h = strings.ToLower(h)
 		u := a.User
-		tx.Exec(`INSERT INTO accounts VALUES(?,?,?,?) ON CONFLICT(handle) DO UPDATE SET user_id=excluded.user_id,name=excluded.name,avatar=excluded.avatar`, h, u.ID, u.Name, u.Avatar)
+		if _, err := tx.Exec(`INSERT INTO accounts(handle,user_id,name,avatar,last_ingest) VALUES(?,?,?,?,?) ON CONFLICT(handle) DO UPDATE SET user_id=excluded.user_id,name=excluded.name,avatar=excluded.avatar,last_ingest=excluded.last_ingest`, h, u.ID, u.Name, u.Avatar, ingestedAt); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(`INSERT INTO follower_snapshots VALUES(?,?,?,?,?) ON CONFLICT(account,date) DO UPDATE SET followers=excluded.followers,following=excluded.following,posts=excluded.posts`, h, r.Date, u.PM.Followers, u.PM.Following, u.PM.Tweets); err != nil {
 			return err
 		}
@@ -302,8 +306,7 @@ func newMux(db *sql.DB, tok string) *http.ServeMux {
 		json.NewEncoder(w).Encode(d)
 	})
 	mux.HandleFunc("/api/ingest", func(w http.ResponseWriter, r *http.Request) {
-		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if tok == "" || subtle.ConstantTimeCompare([]byte(got), []byte(tok)) != 1 {
+		if !bearerAuthorized(r, tok) {
 			http.Error(w, "unauthorized", 401)
 			return
 		}
@@ -321,7 +324,28 @@ func newMux(db *sql.DB, tok string) *http.ServeMux {
 		}
 		w.Write([]byte("ok\n"))
 	})
+	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+		if !bearerAuthorized(r, tok) {
+			http.Error(w, "unauthorized", 401)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "GET only", 405)
+			return
+		}
+		serveHealth(w, db)
+	})
 	return mux
+}
+
+// bearerAuthorized is the ingest token check. An unset token matches nothing,
+// so /api/ingest and /api/health both stay closed.
+func bearerAuthorized(r *http.Request, tok string) bool {
+	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if tok == "" || subtle.ConstantTimeCompare([]byte(got), []byte(tok)) != 1 {
+		return false
+	}
+	return true
 }
 
 func main() {

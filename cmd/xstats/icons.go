@@ -13,7 +13,7 @@ const iconCacheControl = "public, max-age=86400"
 // Basic auth, when the public site uses it, is enforced by Caddy. The
 // Caddyfile leaves these paths open because browsers and iOS request a tab
 // icon and apple-touch-icon without the dashboard credentials. This process
-// only checks a bearer token on /api/ingest.
+// only checks a bearer token on /api/ingest and /api/health.
 //
 // apple-touch-icon-precomposed.png is the legacy iOS name for the same PNG.
 var iconFiles = map[string]struct {
