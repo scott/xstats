@@ -16,12 +16,15 @@ trim_space() {
 }
 
 # render_xstats_env prints the /etc/xstats/env body. The ingest token is read
-# from stdin so it is never placed on a command line. XSTATS_TZ is written
+# from stdin so it is never placed on a command line. Trailing newlines on the
+# token are removed; the rest of the token is unchanged. XSTATS_TZ is written
 # only when set; omitting the line leaves the binary default in place.
 render_xstats_env() {
-  printf 'XSTATS_INGEST_TOKEN='
-  cat
-  echo
+  local token
+  # $(cat) strips trailing newlines only. printf is a shell builtin, so the
+  # token is not passed as an argument to an external program.
+  token=$(cat)
+  printf 'XSTATS_INGEST_TOKEN=%s\n' "$token"
   printf 'XSTATS_ACCOUNTS=%s\n' "${XSTATS_ACCOUNTS:-}"
   if [ -n "${XSTATS_TZ:-}" ]; then
     printf 'XSTATS_TZ=%s\n' "$XSTATS_TZ"
@@ -88,6 +91,12 @@ fi
 if [ -n "${XSTATS_TZ:-}" ]; then
   validate_xstats_tz "$XSTATS_TZ"
 fi
+# Same gate as the zone check: fail before the build, scp, or ssh.
+TOKEN_FILE="${XSTATS_TOKEN_FILE:-$HOME/.config/xstats/ingest_token}"
+if [ ! -r "$TOKEN_FILE" ]; then
+  printf 'cannot read ingest token file: %s\n' "$TOKEN_FILE" >&2
+  exit 1
+fi
 
 [ -x bin/xstats ] || CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/xstats ./cmd/xstats
 scp "${O[@]}" bin/xstats deploy/xstats.service deploy/Caddyfile.tmpl deploy/set-auth.sh "$T:/tmp/"
@@ -114,12 +123,6 @@ ufw allow OpenSSH >/dev/null 2>&1 || true; ufw allow 80,443/tcp >/dev/null 2>&1 
 REMOTE
 
 # Env file over stdin (0640 root:xstats). The token stays off the command line.
-# Check the file before opening the pipe so a missing token does not start ssh.
-TOKEN_FILE="${XSTATS_TOKEN_FILE:-$HOME/.config/xstats/ingest_token}"
-if [ ! -r "$TOKEN_FILE" ]; then
-  printf 'cannot read ingest token file: %s\n' "$TOKEN_FILE" >&2
-  exit 1
-fi
 render_xstats_env < "$TOKEN_FILE" | ssh "${O[@]}" "$T" 'install -d -m 0750 -g xstats /etc/xstats; umask 027; cat > /etc/xstats/env; chgrp xstats /etc/xstats/env; systemctl restart xstats'
 
 # Password goes over stdin only: never on a command line, in a file, or in logs.

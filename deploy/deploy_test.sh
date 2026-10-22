@@ -144,7 +144,6 @@ assert_env() {
 }
 
 base_env='XSTATS_INGEST_TOKEN=dummy-ingest-token
-
 XSTATS_ACCOUNTS=alice,bob
 '
 
@@ -197,6 +196,9 @@ set -e
 mv "$TMP/token.bak" "$TMP/token"
 if [ "$rc" = 0 ]; then
   fail "missing token file should fail the deploy"
+fi
+if [ "$(ssh_count)" != "0" ] || [ "$(scp_count)" != "0" ]; then
+  fail "missing token touched the server stub: ssh=$(ssh_count) scp=$(scp_count)"
 fi
 if [ -f "$TMP/log/env.file" ]; then
   fail "missing token file still sent an env file"
