@@ -39,7 +39,7 @@ A small, self-hosted X (Twitter) stats dashboard. Track follower growth and per-
 ```
 
 - **One binary.** `xstats` embeds the static frontend with `go:embed` and uses `modernc.org/sqlite`, so it builds with `CGO_ENABLED=0` and has no runtime dependencies.
-- **SQLite.** Tables: `accounts` (`last_ingest` is set on each successful ingest and stays null until then), `follower_snapshots` (one row per account per day), `post_metrics` (one row per post per day), `clickthroughs` (one row per day). Re-ingesting a day upserts, so it is always safe to rerun.
+- **SQLite.** Tables: `accounts` (`last_ingest` is set on each successful ingest and stays null until then), `follower_snapshots` (one row per account per day), `post_metrics` (one row per post per day), `clickthroughs` (one row per day). `post_metrics.source` is `live` for a snapshot bundle and `archive` for an archive import. Re-ingesting a day replaces that day's live rows. Importing an archive again does not add a second archive row.
 - **Ingest API.** `POST /api/ingest` with `Authorization: Bearer <token>` accepts a snapshot bundle. The token comes from `XSTATS_INGEST_TOKEN`; if it is unset, ingest is disabled.
 - **Health.** `GET /api/health` uses that same bearer token. If `XSTATS_INGEST_TOKEN` is unset, every health request is refused, same as ingest. A 200 body is JSON with `version`, `commit`, `server_time` (RFC3339, UTC), and `accounts`. Each account has only `latest_snapshot_date` and `last_ingest` (`last_ingest` is null until a successful ingest records it). No post text and no follower counts or other metrics. Example: `curl -sH "Authorization: Bearer $XSTATS_INGEST_TOKEN" http://127.0.0.1:8080/api/health`.
 - **Read API.** `GET /api/data` (accounts, follower history, daily engagement, recent posts) and `GET /api/post/<id>` (daily history for one post).
@@ -141,6 +141,27 @@ One JSON file per day. The `user` and `posts` objects are the X API v2 responses
 - Posts starting with `RT @` are skipped. Posts starting with `@` or with `in_reply_to_user_id` are flagged as replies.
 - Reposts shown in the UI are `retweet_count + quote_count`.
 - A missing `impression_count` is stored as NULL and shown as a dash. `impression_count: 0` is stored as 0. NULL is left out of impression totals.
+
+## Archive import
+
+`xstats import-archive` reads an X data archive and writes posts straight into the database. Pass the zip, or the extracted folder that contains `data/`. This command does not call the X API, and there is no server ingest path for an archive yet.
+
+```
+bin/xstats import-archive --db data/xstats.db ~/Downloads/x-archive.zip
+bin/xstats import-archive --db data/xstats.db --account example ~/Downloads/x-archive
+```
+
+The handle comes from `data/account.js` (`account.username`) when that file is present. If it is missing, `--account` is required. If both are set, they have to match. The stored handle is lowercased, and a leading `@` is stripped.
+
+`data/tweets.js` and `data/tweets-part*.js` are JSON arrays assigned with `window.YTD.tweets.partN = `. Each item is `{"tweet": {...}}`. The importer reads `id_str`, `created_at` (`Wed Oct 10 20:19:24 +0000 2018`, stored as RFC3339 UTC), `full_text`, `favorite_count` (likes), and `retweet_count` (reposts). Counts in the archive are strings. Impressions are NULL. The archive has no reply or quote count, so replies are stored as 0 and quotes are not added into reposts. A post is a reply when `full_text` starts with `@` or any `in_reply_to_*` string is non-empty. Posts whose text starts with `RT @` are skipped.
+
+Rows are tagged `source = 'archive'` and dated the import day in `XSTATS_TZ` (the same zone the dashboard uses for today, not a fixed Mountain Time). One archive row is kept per post. A later import does not update that row and does not insert another one. A post that already has any live snapshot is left completely alone, including when the archive row would have been dated later than the live one. The drill-in then lists only the live snapshots, and the latest-snapshot queries pick the newest live row.
+
+A missing required field, a wrong JSON type, or an unexpected `window.YTD` prefix fails the import, names the file, item, and field, and writes nothing.
+
+`data/note-tweet.js` is not read. A long post keeps the `full_text` from `tweets.js`.
+
+This has not been checked against a real X archive. The field names come from public documentation of the archive format.
 
 ## Engagement score
 

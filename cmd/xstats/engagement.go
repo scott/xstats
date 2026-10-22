@@ -248,11 +248,11 @@ func priorWeekDelta(days []dayEngagement, i int) *float64 {
 }
 
 func loadLatestPosts(db *sql.DB, account string) ([]scoredPost, error) {
-	// One row per post: the newest snapshot. Re-pushing a date replaces that
-	// date's rows at ingest, and MAX(date) then drops the stale copy.
+	// One row per post. Live snapshots outrank archive rows, then the newest
+	// date wins. Re-pushing a date replaces that date's live rows at ingest.
 	rows, err := db.Query(`SELECT post_id, text, created_at, impressions, likes, replies, reposts
 		FROM post_metrics m
-		WHERE account=? AND date=(SELECT MAX(date) FROM post_metrics WHERE post_id=m.post_id AND account=m.account)`, account)
+		WHERE account=? AND date=(`+preferLiveDateSQL(true)+`)`, account)
 	if err != nil {
 		return nil, err
 	}
