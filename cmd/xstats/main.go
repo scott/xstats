@@ -304,8 +304,12 @@ func newMux(db *sql.DB, tok string) *http.ServeMux {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("usage: xstats serve|ingest [flags]")
+		fmt.Println("usage: xstats serve|ingest|version [flags]")
 		os.Exit(2)
+	}
+	if os.Args[1] == "version" {
+		fmt.Print(versionOutput())
+		return
 	}
 	fsFlags := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 	dbp := fsFlags.String("db", "xstats.db", "SQLite path")
@@ -323,8 +327,9 @@ func main() {
 			}
 		}
 	case "serve":
+		ver, rev := versionStamp()
 		mux := newMux(db, strings.TrimSpace(os.Getenv("XSTATS_INGEST_TOKEN")))
-		log.Printf("xstats listening on %s", *addr)
+		log.Printf("xstats version %s commit %s listening on %s", ver, rev, *addr)
 		log.Fatal(http.ListenAndServe(*addr, mux))
 	default:
 		log.Fatalf("unknown command %q", os.Args[1])
