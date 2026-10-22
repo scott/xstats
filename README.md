@@ -200,8 +200,10 @@ score = 3×comments + 4×new_followers + 2×reshares + 1×likes
 - A day with 0 impressions still has a score. A follower drop can make the score negative; the card shows that value and the chart draws no bar.
 - If the source omitted `impression_count`, that post is not added into the day's impression total. When every post that day omitted it, the total is null and the hover card shows a dash. A day with no posts still reports 0.
 - `in_progress` is true when that snapshot date is today in `XSTATS_TZ`, because the day can still be re-pushed. The page labels the browser's local today as "Today (in progress)", same as the follower line.
-- `score_delta` is this score minus the average score of earlier snapshot days in the previous 7 calendar days. Zero and negative scores are included.
+- `score_delta` is this score minus the average score of earlier snapshot days in the previous 7 calendar days. Zero and negative scores are included. Backfilled days are left out of every window.
 - `top_post` is the post created that day with the most post-level points (`3×replies + 2×reshares + 1×likes`). Ties prefer more impressions, then the lower post id. The link is `https://x.com/<handle>/status/<id>`.
+- Days before the first follower snapshot are backfilled from posts. Those days start no more than 30 calendar days before that snapshot. A first snapshot on `2026-10-20` still shows a post from `2026-09-20`, and does not add a day for a post from `2026-09-19`. The older post stays in the database. It stays in the recent-posts list and on `GET /api/post/<id>` when that list's own window includes it. It is left out of the chart and of each day's engagement totals, so the totals stay the sum of the days the chart shows.
+- `XSTATS_START_DATES` hides an account before a calendar day without deleting rows. The value is comma-separated `handle:YYYY-MM-DD` pairs, for example `example_a:2026-10-14,example_b:2026-09-01`. Spaces are trimmed, handles are lowercased, and one leading `@` is stripped. The process reads it at startup. An empty handle, a bad or impossible date, a duplicate handle, or a malformed pair is logged with that pair and the process exits non-zero. Unset or empty means no start dates. For a configured account, `GET /api/data` and `GET /api/post/<id>` leave out history days, backfilled days, posts, drill-ins, totals, and `score_delta` windows dated before that day. The day is a calendar day in `XSTATS_TZ`, using the same boundaries as engagement days. Other accounts are unchanged, apart from the 30-day backfill cap. Changing the variable needs a service restart.
 
 Suggested X API v2 calls per day (3 reads for two accounts):
 
@@ -239,6 +241,8 @@ What you give up: there is no public URL and no TLS, and the dashboard is viewab
    ```
 
    `XSTATS_TZ` is optional. Leave it unset and engagement days use `America/Denver` (zone data is embedded; see the table under Deploy). To override, add one line to that same env file, for example `XSTATS_TZ=America/New_York`. Keep the file mode 0600.
+
+   `XSTATS_START_DATES` is optional. Add one line to that same file, for example `XSTATS_START_DATES=example_a:2026-10-14`. The service reads it at startup, so after a change run `systemctl --user restart xstats`.
 
 3. Install the user unit. The same file is `deploy/xstats-local.service`:
 
@@ -362,6 +366,8 @@ A copy of the script that is not sitting next to `set-auth.sh`, `Caddyfile.tmpl`
 
 When `XSTATS_TZ` is set, the script trims whitespace and checks the zone before it creates the user, installs packages, or writes xstats files. An invalid zone stops the install. When `XSTATS_TZ` is unset or blank, the line is left out of `/etc/xstats/env` and the binary keeps its own default.
 
+`XSTATS_START_DATES`, when set in the environment, is trimmed, checked with the binary being installed, and written to `/etc/xstats/env`. It is not a flag. Unset or blank leaves the line out. A bad value stops the install before it changes the system. The service reads the variable at startup, so a later edit needs `systemctl restart xstats`.
+
 Running the script again is safe. The previous binary stays at `/usr/local/bin/xstats.prev`, and an existing database is copied to `/var/lib/xstats/xstats.db.bak-<timestamp>` before the new binary is installed. An ingest token already in `/etc/xstats/env` is kept unless you pass `--token-file` or `--rotate-token`.
 
 ## Deploy
@@ -394,9 +400,10 @@ Put these in `~/.config/xstats/deploy.env` (mode 0600, see `.env.deploy.example`
 | `XSTATS_TOKEN_FILE` | `~/.config/xstats/ingest_token` | Ingest token file |
 | `XSTATS_ACCOUNTS` | unset | Optional tab order, e.g. `alice,bob`; first is the default |
 | `XSTATS_TZ` | `America/Denver` | Zone for engagement day buckets and `in_progress`. `deploy.sh` propagates it to `/etc/xstats/env` when set, and omits the line when unset so the binary default applies. An invalid name fails the deploy before the server is touched. Zone data is embedded, so a host without tz files still resolves the default |
+| `XSTATS_START_DATES` | unset | Optional per-account start, comma-separated `handle:YYYY-MM-DD`. `deploy.sh` writes it to `/etc/xstats/env` when set, and omits the line when unset or blank. A bad value fails the deploy before the server is touched. The service reads it at startup, so a later edit needs `systemctl restart xstats` |
 | `STATS_URL` | required for push | Base URL used by `snapshot/push.sh` |
 
-`deploy.sh` installs Caddy from its official apt repo, creates an `xstats` system user, installs the binary to `/usr/local/bin`, the unit from `deploy/xstats.service`, and `/etc/xstats/env` (mode 0640) with the ingest token, `XSTATS_ACCOUNTS`, and `XSTATS_TZ` when that zone is set. The password is sent over SSH stdin and hashed on the server with `caddy hash-password`; only the bcrypt hash is stored. The script is idempotent.
+`deploy.sh` installs Caddy from its official apt repo, creates an `xstats` system user, installs the binary to `/usr/local/bin`, the unit from `deploy/xstats.service`, and `/etc/xstats/env` (mode 0640) with the ingest token, `XSTATS_ACCOUNTS`, `XSTATS_TZ` when that zone is set, and `XSTATS_START_DATES` when that list is set. Writing the env file restarts `xstats`, which is what picks up a start-date change. The password is sent over SSH stdin and hashed on the server with `caddy hash-password`; only the bcrypt hash is stored. The script is idempotent.
 
 Each deploy keeps the previous binary as `/usr/local/bin/xstats.prev` and backs up the database to `/var/lib/xstats/xstats.db.bak-<timestamp>`.
 

@@ -33,7 +33,7 @@ usage: bootstrap.sh [--hostname HOST] [--accounts LIST] [--auth-user USER]
                     [--release-url URL] [--rotate-token]
 
 Hostname and accounts may also be set with XSTATS_DOMAIN and XSTATS_ACCOUNTS.
-XSTATS_AUTH_USER defaults to admin. XSTATS_TZ is optional.
+XSTATS_AUTH_USER defaults to admin. XSTATS_TZ and XSTATS_START_DATES are optional.
 
 The ingest token and the dashboard password come from --token-file /
 XSTATS_TOKEN_FILE, --password-file / XSTATS_PASSWORD_FILE, a prompt, or
@@ -45,6 +45,12 @@ xstats.<domain>.
 When XSTATS_TZ is set, it is trimmed and checked before the install
 changes the system. When it is unset or blank, it is left out of
 /etc/xstats/env.
+
+XSTATS_START_DATES is not a flag. When it is set, it is trimmed, checked
+with the binary being installed, and written to /etc/xstats/env. When it
+is unset or blank, the line is left out. A bad value stops the install
+before the system is changed. The service reads it at startup, so a later
+edit needs systemctl restart xstats.
 
 A rerun keeps /usr/local/bin/xstats.prev and a database backup, and keeps
 an existing ingest token unless --token-file or --rotate-token is given.
@@ -191,6 +197,25 @@ ensure_curl() {
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   apt-get install -y -qq ca-certificates curl coreutils
+}
+
+# validate_start_dates runs the release binary so a bad pair fails the
+# same way a later service start would. The binary is still only in the
+# temp dir. Output names the pair.
+validate_start_dates() {
+  local value=$1
+  local bin=$2
+  local err=
+  rm -f "$tmp/startcheck.db" "$tmp/startcheck.db-wal" "$tmp/startcheck.db-shm"
+  if ! err=$(XSTATS_START_DATES="$value" "$bin" ingest --db "$tmp/startcheck.db" 2>&1 >/dev/null); then
+    if [ -n "$err" ]; then
+      printf '%s\n' "$err" >&2
+    else
+      printf 'invalid XSTATS_START_DATES %q\n' "$value" >&2
+    fi
+    return 1
+  fi
+  rm -f "$tmp/startcheck.db" "$tmp/startcheck.db-wal" "$tmp/startcheck.db-shm"
 }
 
 # validate_tz runs the release binary, which uses the same embedded zone
@@ -341,6 +366,9 @@ write_env() {
     if [ -n "$tz" ]; then
       printf 'XSTATS_TZ=%s\n' "$tz"
     fi
+    if [ -n "$start_dates" ]; then
+      printf 'XSTATS_START_DATES=%s\n' "$start_dates"
+    fi
   } > "$tmpenv"
   chown root:xstats "$tmpenv"
   chmod 0640 "$tmpenv"
@@ -380,8 +408,12 @@ password_file=${XSTATS_PASSWORD_FILE:-}
 release_url=${XSTATS_RELEASE_URL:-https://github.com/scott/xstats/releases/latest/download}
 rotate_token=0
 tz=
+start_dates=
 if [ -n "${XSTATS_TZ+x}" ]; then
   tz=$(trim_space "$XSTATS_TZ")
+fi
+if [ -n "${XSTATS_START_DATES+x}" ]; then
+  start_dates=$(trim_space "$XSTATS_START_DATES")
 fi
 
 while [ $# -gt 0 ]; do
@@ -490,13 +522,19 @@ if [ -n "$tz" ]; then
     *$'\n'*|*'='*) die "invalid XSTATS_TZ" ;;
   esac
 fi
+if [ -n "$start_dates" ]; then
+  case "$start_dates" in
+    *$'\n'*|*'='*) die "invalid XSTATS_START_DATES" ;;
+  esac
+fi
 
 resolve_hostname
 valid_hostname "$hostname" || die "invalid hostname"
 
-# Secrets and the zone are settled before the install writes anywhere
-# except a temp download (and curl, if the base image has neither curl
-# nor sha256sum). An invalid zone or a bad checksum stops first.
+# Secrets, the zone, and start dates are settled before the install writes
+# anywhere except a temp download (and curl, if the base image has neither
+# curl nor sha256sum). An invalid zone, a bad start date, or a bad checksum
+# stops first.
 read_existing_token
 load_password
 load_token
@@ -513,6 +551,9 @@ printf 'checksum ok for %s\n' "$asset_name"
 
 if [ -n "$tz" ]; then
   validate_tz "$tz" "$tmp/$asset_name" || exit 1
+fi
+if [ -n "$start_dates" ]; then
+  validate_start_dates "$start_dates" "$tmp/$asset_name" || exit 1
 fi
 
 stage_companion_files

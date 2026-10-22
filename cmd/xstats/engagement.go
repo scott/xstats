@@ -198,11 +198,14 @@ func (b *dayBucket) add(p scoredPost) {
 
 // aggregateDays buckets latest-per-post metrics onto chart days.
 // created_at is interpreted in loc (see postDay). A post dated before the
-// first follower snapshot becomes a backfilled day. A post on a later day
-// that has no snapshot is left out. A post is counted once, from its latest
-// snapshot, so re-pushing a day replaces numbers instead of adding them.
-// today is the calendar day in that same zone; it sets InProgress on
-// snapshot days. hist is already ordered by date.
+// first follower snapshot becomes a backfilled day, but only within
+// backfillLookbackDays of that snapshot. An older post stays out of every
+// day total; the recent-posts list applies its own window and is not
+// changed here. A post on a later day that has no snapshot is left out.
+// A post is counted once, from its latest snapshot, so re-pushing a day
+// replaces numbers instead of adding them. today is the calendar day in
+// that same zone; it sets InProgress on snapshot days. hist is already
+// ordered by date.
 func aggregateDays(hist []histDay, posts []scoredPost, today string, loc *time.Location) []dayEngagement {
 	byDay := map[string]*dayBucket{}
 	for _, p := range posts {
@@ -219,11 +222,21 @@ func aggregateDays(hist []histDay, posts []scoredPost, today string, loc *time.L
 	}
 	out := make([]dayEngagement, 0, len(hist))
 	if len(hist) > 0 {
+		floor := ""
+		if first, err := time.Parse("2006-01-02", hist[0].Date); err == nil {
+			floor = first.AddDate(0, 0, -backfillLookbackDays).Format("2006-01-02")
+		}
 		var early []string
 		for day := range byDay {
-			if day < hist[0].Date {
-				early = append(early, day)
+			if day >= hist[0].Date {
+				continue
 			}
+			// No floor means the snapshot date did not parse. Keep the
+			// previous behavior rather than dropping every early day.
+			if floor != "" && day < floor {
+				continue
+			}
+			early = append(early, day)
 		}
 		sort.Strings(early)
 		for _, day := range early {
