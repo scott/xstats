@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"math"
 	"net/http"
@@ -196,15 +197,15 @@ func TestAggregateDays(t *testing.T) {
 	posts := []scoredPost{
 		// First day. new_followers must be 0 (no prior snapshot), not omitted.
 		// Impressions are not 1000, so a rate would not equal the points total.
-		{ID: "p1", Text: "first", CreatedAt: "2026-09-01T12:00:00.000Z", Impressions: 2500, Likes: 50},
+		{ID: "p1", Text: "first", CreatedAt: "2026-09-01T12:00:00.000Z", Impressions: ip(2500), Likes: 50},
 		// Zero impressions still scores. The follower drop makes the total negative.
-		{ID: "p2", Text: "quiet", CreatedAt: "2026-09-02T12:00:00Z", Impressions: 0, Likes: 4, Replies: 1},
-		{ID: "p3", Text: "scored", CreatedAt: "2026-09-03T12:00:00Z", Impressions: 2000, Likes: 10},
+		{ID: "p2", Text: "quiet", CreatedAt: "2026-09-02T12:00:00Z", Impressions: ip(0), Likes: 4, Replies: 1},
+		{ID: "p3", Text: "scored", CreatedAt: "2026-09-03T12:00:00Z", Impressions: ip(2000), Likes: 10},
 		// 05:30Z on Sep 5 is 23:30 MT on Sep 4, so this stays on the Sep 4 snapshot.
-		{ID: "p4", Text: "offset", CreatedAt: "2026-09-05T05:30:00Z", Impressions: 500, Likes: 5},
-		{ID: "skip", Text: "bad", CreatedAt: "", Impressions: 99999, Likes: 99999},
-		{ID: "old", Text: "unaligned", CreatedAt: "2026-08-01T12:00:00Z", Impressions: 99999, Likes: 99999},
-		{ID: "p5", Text: "latest", CreatedAt: "2026-09-10T12:00:00Z", Impressions: 4000, Likes: 16},
+		{ID: "p4", Text: "offset", CreatedAt: "2026-09-05T05:30:00Z", Impressions: ip(500), Likes: 5},
+		{ID: "skip", Text: "bad", CreatedAt: "", Impressions: ip(99999), Likes: 99999},
+		{ID: "old", Text: "unaligned", CreatedAt: "2026-08-01T12:00:00Z", Impressions: ip(99999), Likes: 99999},
+		{ID: "p5", Text: "latest", CreatedAt: "2026-09-10T12:00:00Z", Impressions: ip(4000), Likes: 16},
 	}
 	loc := denver(t)
 	got := aggregateDays(hist, posts, "2026-09-10", loc)
@@ -222,7 +223,7 @@ func TestAggregateDays(t *testing.T) {
 
 	d1 := got[1]
 	wantQuiet := dayLevelPoints(1, -10, 0, 4)
-	if d1.NewFollowers != -10 || d1.Impressions != 0 || d1.Score == nil || *d1.Score != float64(wantQuiet) || d1.Points != wantQuiet {
+	if d1.NewFollowers != -10 || !imprIs(d1.Impressions, 0) || d1.Score == nil || *d1.Score != float64(wantQuiet) || d1.Points != wantQuiet {
 		t.Fatalf("zero impressions: %+v score %v", d1, scoreOr(d1.Score))
 	}
 	if d1.ScoreDelta == nil || math.Abs(*d1.ScoreDelta-float64(wantQuiet-50)) > 1e-9 {
@@ -238,7 +239,7 @@ func TestAggregateDays(t *testing.T) {
 	if last.ScoreDelta == nil || math.Abs(*last.ScoreDelta-8.5) > 1e-9 {
 		t.Fatalf("delta %v", scoreOr(last.ScoreDelta))
 	}
-	if got[2].InProgress || got[3].Date != "2026-09-04" || got[3].Likes != 5 || got[3].Impressions != 500 {
+	if got[2].InProgress || got[3].Date != "2026-09-04" || got[3].Likes != 5 || !imprIs(got[3].Impressions, 500) {
 		t.Fatalf("zone bucket: %+v %+v", got[2], got[3])
 	}
 	if got[2].Score == nil || *got[2].Score != 10 || got[2].Points != 10 || got[3].Score == nil || *got[3].Score != 5 || got[3].Points != 5 {
@@ -254,24 +255,32 @@ func TestTopPostTieBreak(t *testing.T) {
 	hist := []histDay{{Date: "2026-10-01", Followers: 5}}
 	loc := denver(t)
 	higherImp := aggregateDays(hist, []scoredPost{
-		{ID: "1", Text: "low", CreatedAt: "2026-10-01T18:00:00Z", Impressions: 100, Likes: 10},
-		{ID: "2", Text: "high", CreatedAt: "2026-10-01T18:00:00Z", Impressions: 200, Likes: 10},
+		{ID: "1", Text: "low", CreatedAt: "2026-10-01T18:00:00Z", Impressions: ip(100), Likes: 10},
+		{ID: "2", Text: "high", CreatedAt: "2026-10-01T18:00:00Z", Impressions: ip(200), Likes: 10},
 	}, "2026-01-01", loc)
 	if higherImp[0].Top == nil || higherImp[0].Top.ID != "2" || higherImp[0].Top.Points != 10 {
 		t.Fatalf("impressions tie-break: %+v", higherImp[0].Top)
 	}
 	lowerID := aggregateDays(hist, []scoredPost{
-		{ID: "200", Text: "b", CreatedAt: "2026-10-01T18:00:00Z", Impressions: 100, Likes: 10},
-		{ID: "100", Text: "a", CreatedAt: "2026-10-01T18:00:00Z", Impressions: 100, Likes: 10},
+		{ID: "200", Text: "b", CreatedAt: "2026-10-01T18:00:00Z", Impressions: ip(100), Likes: 10},
+		{ID: "100", Text: "a", CreatedAt: "2026-10-01T18:00:00Z", Impressions: ip(100), Likes: 10},
 	}, "2026-01-01", loc)
 	if lowerID[0].Top == nil || lowerID[0].Top.ID != "100" {
 		t.Fatalf("id tie-break: %+v", lowerID[0].Top)
+	}
+	// A known 0 beats an omitted count. Treating nil as 0 would pick the lower id.
+	knownZero := aggregateDays(hist, []scoredPost{
+		{ID: "1", Text: "unknown", CreatedAt: "2026-10-01T18:00:00Z", Impressions: nil, Likes: 1},
+		{ID: "2", Text: "zero", CreatedAt: "2026-10-01T18:00:00Z", Impressions: ip(0), Likes: 1},
+	}, "2026-01-01", loc)
+	if knownZero[0].Top == nil || knownZero[0].Top.ID != "2" {
+		t.Fatalf("nil vs zero tie-break: %+v", knownZero[0].Top)
 	}
 }
 
 func TestNegativeScore(t *testing.T) {
 	hist := []histDay{{Date: "2026-10-01", Followers: 100}, {Date: "2026-10-02", Followers: 90}}
-	posts := []scoredPost{{ID: "1", CreatedAt: "2026-10-02T18:00:00Z", Impressions: 500}}
+	posts := []scoredPost{{ID: "1", CreatedAt: "2026-10-02T18:00:00Z", Impressions: ip(500)}}
 	got := aggregateDays(hist, posts, "2026-01-01", denver(t))
 	wantPts := dayLevelPoints(0, -10, 0, 0)
 	if got[1].NewFollowers != -10 || got[1].Points != wantPts || got[1].Score == nil || *got[1].Score != float64(wantPts) {
@@ -288,6 +297,39 @@ func scoreOr(p *float64) any {
 		return nil
 	}
 	return *p
+}
+
+func ip(n int) *int { return &n }
+
+func imprIs(p *int, n int) bool { return p != nil && *p == n }
+
+func TestNullImpressionsExcludedFromTotal(t *testing.T) {
+	hist := []histDay{{Date: "2026-10-01", Followers: 10}}
+	loc := denver(t)
+	mixed := aggregateDays(hist, []scoredPost{
+		{ID: "a", CreatedAt: "2026-10-01T18:00:00Z", Impressions: ip(10), Likes: 1},
+		{ID: "b", CreatedAt: "2026-10-01T18:00:00Z", Impressions: nil, Likes: 1},
+	}, "2026-01-01", loc)
+	if !imprIs(mixed[0].Impressions, 10) || mixed[0].Score == nil || *mixed[0].Score != 2 {
+		t.Fatalf("mixed total %+v score %v", mixed[0].Impressions, scoreOr(mixed[0].Score))
+	}
+	none := aggregateDays(hist, []scoredPost{
+		{ID: "c", CreatedAt: "2026-10-01T18:00:00Z", Impressions: nil, Likes: 3},
+	}, "2026-01-01", loc)
+	if none[0].Impressions != nil || none[0].Likes != 3 || none[0].Score == nil || *none[0].Score != 3 {
+		t.Fatalf("all unknown %+v score %v", none[0].Impressions, scoreOr(none[0].Score))
+	}
+	zero := aggregateDays(hist, []scoredPost{
+		{ID: "d", CreatedAt: "2026-10-01T18:00:00Z", Impressions: ip(0)},
+		{ID: "e", CreatedAt: "2026-10-01T18:00:00Z", Impressions: nil},
+	}, "2026-01-01", loc)
+	if !imprIs(zero[0].Impressions, 0) {
+		t.Fatalf("explicit zero %+v", zero[0].Impressions)
+	}
+	empty := aggregateDays(hist, nil, "2026-01-01", loc)
+	if !imprIs(empty[0].Impressions, 0) {
+		t.Fatalf("day with no posts %+v", empty[0].Impressions)
+	}
 }
 
 func apiRoot(t *testing.T, mux *http.ServeMux) map[string]any {
@@ -463,6 +505,151 @@ func TestEngagementIngest(t *testing.T) {
 	}
 }
 
+func TestMigrateKeepsImpressionValues(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "legacy.db")
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Schema as created before this change, including the later is_reply column.
+	if _, err := raw.Exec(`CREATE TABLE post_metrics(post_id TEXT, account TEXT, date TEXT, text TEXT, created_at TEXT, impressions INT, likes INT, replies INT, reposts INT, is_reply INT DEFAULT 0, PRIMARY KEY(post_id,date))`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`INSERT INTO post_metrics(post_id,account,date,text,created_at,impressions,likes,replies,reposts,is_reply) VALUES
+		('z','demo','2020-01-01','real zero','2020-01-01T12:00:00Z',0,1,0,0,0),
+		('p','demo','2020-01-01','some views','2020-01-01T12:00:00Z',120,4,1,2,0),
+		('r','demo','2020-01-01','@someone hi','2020-01-01T12:00:00Z',7,0,0,0,0)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db := openDB(path)
+	defer db.Close()
+	var rows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM post_metrics`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 3 {
+		t.Fatalf("row count %d", rows)
+	}
+	check := func(id string, want sql.NullInt64, reply int) {
+		t.Helper()
+		var got sql.NullInt64
+		var ir int
+		if err := db.QueryRow(`SELECT impressions, is_reply FROM post_metrics WHERE post_id=?`, id).Scan(&got, &ir); err != nil {
+			t.Fatal(err)
+		}
+		if got.Valid != want.Valid || got.Int64 != want.Int64 || ir != reply {
+			t.Fatalf("%s impressions %+v reply %d, want %+v reply %d", id, got, ir, want, reply)
+		}
+	}
+	check("z", sql.NullInt64{Int64: 0, Valid: true}, 0)
+	check("p", sql.NullInt64{Int64: 120, Valid: true}, 0)
+	check("r", sql.NullInt64{Int64: 7, Valid: true}, 1)
+
+	var notnull int
+	if err := db.QueryRow(`SELECT "notnull" FROM pragma_table_info('post_metrics') WHERE name='impressions'`).Scan(&notnull); err != nil {
+		t.Fatal(err)
+	}
+	if notnull != 0 {
+		t.Fatal("impressions became NOT NULL")
+	}
+	if _, err := db.Exec(`INSERT INTO post_metrics(post_id,account,date,text,created_at,impressions,likes,replies,reposts) VALUES('n','demo','2020-01-02','omitted','2020-01-02T12:00:00Z',NULL,0,0,0)`); err != nil {
+		t.Fatal(err)
+	}
+	check("n", sql.NullInt64{}, 0)
+	if err := db.QueryRow(`SELECT COUNT(*) FROM post_metrics`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 4 {
+		t.Fatalf("row count after null insert %d", rows)
+	}
+}
+
+func TestIngestImpressionsNullVsZero(t *testing.T) {
+	mux, ing := testDB(t)
+	loc, err := statsLocation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().In(loc)
+	d0 := now.AddDate(0, 0, -2).Format("2006-01-02")
+	d1 := now.AddDate(0, 0, -1).Format("2006-01-02")
+	d2 := now.Format("2006-01-02")
+	stamp := func(day string, hour int) string {
+		t.Helper()
+		d, err := time.ParseInLocation("2006-01-02", day, loc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return time.Date(d.Year(), d.Month(), d.Day(), hour, 0, 0, 0, loc).Format(time.RFC3339)
+	}
+	user := `{"id":"1","username":"demo","name":"Demo","public_metrics":{"followers_count":10,"following_count":1,"tweet_count":1}}`
+	ing("d0.json", `{"date":"`+d0+`","accounts":{"demo":{"user":`+user+`,"posts":[
+		{"id":"10","text":"archive post","created_at":"`+stamp(d0, 12)+`","public_metrics":{"like_count":2,"reply_count":0,"retweet_count":0,"quote_count":0}}
+	]}}}`)
+	ing("d1.json", `{"date":"`+d1+`","accounts":{"demo":{"user":`+user+`,"posts":[
+		{"id":"11","text":"zero views","created_at":"`+stamp(d1, 12)+`","public_metrics":{"impression_count":0,"like_count":1,"reply_count":0,"retweet_count":0,"quote_count":0}},
+		{"id":"12","text":"also unknown","created_at":"`+stamp(d1, 15)+`","public_metrics":{"like_count":1,"reply_count":0,"retweet_count":0,"quote_count":0}}
+	]}}}`)
+	ing("d2.json", `{"date":"`+d2+`","accounts":{"demo":{"user":`+user+`,"posts":[
+		{"id":"13","text":"known","created_at":"`+stamp(d2, 12)+`","public_metrics":{"impression_count":10,"like_count":1,"reply_count":0,"retweet_count":0,"quote_count":0}},
+		{"id":"14","text":"omitted","created_at":"`+stamp(d2, 15)+`","public_metrics":{"like_count":4,"reply_count":0,"retweet_count":0,"quote_count":0}}
+	]}}}`)
+
+	missing := get(mux, "/api/post/10").Body.String()
+	if !strings.Contains(missing, `"impressions":null`) {
+		t.Fatalf("missing count stored as non-null: %s", missing)
+	}
+	zero := get(mux, "/api/post/11").Body.String()
+	if !strings.Contains(zero, `"impressions":0`) || strings.Contains(zero, `"impressions":null`) {
+		t.Fatalf("explicit zero: %s", zero)
+	}
+
+	root := apiRoot(t, mux)
+	_, e0 := histEng(t, root, "demo", d0)
+	if _, ok := e0["impressions"]; !ok || e0["impressions"] != nil {
+		t.Fatalf("all-unknown total %#v", e0["impressions"])
+	}
+	_, e1 := histEng(t, root, "demo", d1)
+	if e1["impressions"] == nil || asInt(e1["impressions"]) != 0 {
+		t.Fatalf("zero plus unknown %#v", e1["impressions"])
+	}
+	_, e2 := histEng(t, root, "demo", d2)
+	if asInt(e2["impressions"]) != 10 {
+		t.Fatalf("null not excluded from total: %#v", e2["impressions"])
+	}
+	posts := root["accounts"].(map[string]any)["demo"].(map[string]any)["posts"].([]any)
+	byID := map[string]any{}
+	for _, rawp := range posts {
+		p := rawp.(map[string]any)
+		byID[p["id"].(string)] = p["impressions"]
+	}
+	if byID["10"] != nil || byID["12"] != nil || byID["14"] != nil {
+		t.Fatalf("list nulls %#v", byID)
+	}
+	if asInt(byID["11"]) != 0 || asInt(byID["13"]) != 10 {
+		t.Fatalf("list values %#v", byID)
+	}
+
+	// Re-pushing without the field replaces a previous count with NULL.
+	ing("d2b.json", `{"date":"`+d2+`","accounts":{"demo":{"user":`+user+`,"posts":[
+		{"id":"13","text":"known","created_at":"`+stamp(d2, 12)+`","public_metrics":{"like_count":1,"reply_count":0,"retweet_count":0,"quote_count":0}}
+	]}}}`)
+	again := get(mux, "/api/post/13").Body.String()
+	if !strings.Contains(again, `"impressions":null`) || strings.Contains(again, `"impressions":10`) {
+		t.Fatalf("re-push history: %s", again)
+	}
+	root = apiRoot(t, mux)
+	_, e2 = histEng(t, root, "demo", d2)
+	if e2["impressions"] != nil {
+		t.Fatalf("re-push total %#v", e2["impressions"])
+	}
+}
+
 func itoaN(n int) string {
 	if n == 0 {
 		return "0"
@@ -496,6 +683,15 @@ func TestPageMarksEngagement(t *testing.T) {
 	if strings.Contains(body, "No bar: this day has 0 impressions.") {
 		t.Fatal("zero-impressions explanation must not ship")
 	}
+	if strings.Contains(body, "e.impressions?compact(e.impressions):'0'") {
+		t.Fatal("missing impressions still render as 0")
+	}
+	if !strings.Contains(body, "e.impressions==null?'-':compact(e.impressions)") {
+		t.Fatal("null impressions should render as a dash")
+	}
+	if !strings.Contains(body, "last[k]==null||prev[k]==null") {
+		t.Fatal("null metric delta should not be subtracted as zero")
+	}
 	if strings.Contains(body, "Example data") || strings.Contains(body, "EXAMPLE DATA") {
 		t.Fatal("example-data label must not ship")
 	}
@@ -514,13 +710,13 @@ func TestEveningMountainTime(t *testing.T) {
 		t.Fatalf("denver day of 05:30Z %s", today)
 	}
 	hist := []histDay{{Date: "2026-10-14", Followers: 10}, {Date: "2026-10-15", Followers: 12}}
-	posts := []scoredPost{{ID: "eve", Text: "late", CreatedAt: "2026-10-15T05:30:00Z", Impressions: 250, Likes: 3}}
+	posts := []scoredPost{{ID: "eve", Text: "late", CreatedAt: "2026-10-15T05:30:00Z", Impressions: ip(250), Likes: 3}}
 	got := aggregateDays(hist, posts, today, loc)
 	if !got[0].InProgress || got[0].Likes != 3 || got[0].Score == nil || *got[0].Score != 3 || got[0].Points != 3 {
 		t.Fatalf("evening post %+v score %v", got[0], scoreOr(got[0].Score))
 	}
 	// The next snapshot has no posts. Its score is the follower change only.
-	if got[1].InProgress || got[1].Likes != 0 || got[1].Impressions != 0 || got[1].Score == nil || *got[1].Score != 8 || got[1].Points != 8 {
+	if got[1].InProgress || got[1].Likes != 0 || !imprIs(got[1].Impressions, 0) || got[1].Score == nil || *got[1].Score != 8 || got[1].Points != 8 {
 		t.Fatalf("next utc day %+v score %v", got[1], scoreOr(got[1].Score))
 	}
 }

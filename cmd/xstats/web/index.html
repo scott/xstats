@@ -103,13 +103,14 @@ function tipHTML(e,date){
  let delta='';
  if(scored&&typeof e.score_delta==='number'&&Number.isFinite(e.score_delta)){const d=e.score_delta,cls=d>0?'up':d<0?'down':'sub';delta=`<span class="${cls}" style="margin-left:auto;font-size:12px;white-space:nowrap">${d>0?'+':''}${f1(d)} vs 7-day avg</span>`}
  const rows=EROWS.map(([k,lab])=>`<div class="rw"><span>${lab}</span><span>${fmt(+e[k]||0)}</span></div>`).join('');
- const impr=e.impressions?compact(e.impressions):'0';
+ const impr=e.impressions==null?'-':compact(e.impressions);
  let top='';if(e.top_post&&e.top_post.url)top=`<div class="sub" style="margin-top:4px">Top post: <a href="${esc(e.top_post.url)}" target="_blank" rel="noopener">${esc(shortText(e.top_post.text))}</a></div>`;
  const num=scored?fmt(Math.round(e.score)):'\u2014';
  const color=scored&&e.score<0?'var(--down)':'var(--bar)';
  return `<div class="lbl">${esc(head)}</div><div class="sc"><b style="color:${color}">${num}</b><span class="sub">${scored?'points':'no score'}</span>${delta}</div>${rows}<div class="ft sub">${impr} impressions</div>${top}`}
 function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||(innerWidth<820?30:15);const W=opts.W||800,H=opts.H||220,P=opts.W?28:40,B=opts.bars||null,PR=B?(fs>20?78:46):10;if(!h.length)return '<div class="empty">No snapshots yet.</div>';
- const ys=h.map(s=>s[key]),mn=Math.min(...ys),mx=Math.max(...ys),r=Math.max(mx-mn,4),lo=mn-r*.25,hi=mx+r*.25;
+ const finite=v=>typeof v==='number'&&Number.isFinite(v),ys=h.map(s=>s[key]).filter(finite);if(!ys.length)return '<div class="empty">No data yet.</div>';
+ const mn=Math.min(...ys),mx=Math.max(...ys),r=Math.max(mx-mn,4),lo=mn-r*.25,hi=mx+r*.25;
  const basePL=(fs>20&&!opts.W)?P*2:P,labelW=Math.ceil(Math.max(fmt(Math.round(lo)).length,fmt(Math.round(hi)).length)*fs*.62)+12;
  const PL=B?Math.max(basePL,labelW):basePL;
  const parseDay=s=>{const p=s.split('-');return new Date(+p[0],p[1]-1,+p[2])};
@@ -122,10 +123,20 @@ function chart(h,key,opts){key=key||'followers';opts=opts||{};const fs=opts.fs||
   x=i=>PL+slot*(Math.round((parseDay(h[i].date)-t0)/86400000)+0.5);
  }else x=i=>h.length==1?W-PR:PL+(W-PL-PR)*i/(h.length-1);
  const y=v=>16+(H-36)*(1-(v-lo)/(hi-lo));
- const pts=h.map((s,i)=>`${x(i).toFixed(1)},${y(s[key]).toFixed(1)}`);let g='';
+ let g='';
  const xGrid=B?W-PR:W,st=Math.max(1,Math.ceil((hi-lo)/4));for(let v=Math.max(0,Math.ceil(lo/st)*st);v<=hi;v+=st){const yy=y(v);g+=`<line x1="${PL}" x2="${xGrid}" y1="${yy}" y2="${yy}" stroke="var(--grid)"/><text x="${B?PL-8:0}" y="${yy+4}" text-anchor="${B?'end':'start'}" fill="var(--mut)" font-size="${fs}">${fmt(v)}</text>`}
- const line=h.length>1?`<path d="M${pts.join(' L')} L${x(h.length-1)},${H} L${x(0)},${H}Z" fill="url(#gr${key})"/><path d="M${pts.join(' L')}" fill="none" stroke="var(--acc)" stroke-width="2.5"/>`:'';
- const lp=pts[pts.length-1].split(',');
+ const allKnown=h.every(s=>finite(s[key]));
+ let line='',lp;
+ if(allKnown){
+  const pts=h.map((s,i)=>`${x(i).toFixed(1)},${y(s[key]).toFixed(1)}`);
+  line=h.length>1?`<path d="M${pts.join(' L')} L${x(h.length-1)},${H} L${x(0)},${H}Z" fill="url(#gr${key})"/><path d="M${pts.join(' L')}" fill="none" stroke="var(--acc)" stroke-width="2.5"/>`:'';
+  lp=pts[pts.length-1].split(',');
+ }else{
+  let d='',pen=false,last='';
+  for(let i=0;i<h.length;i++){if(!finite(h[i][key])){pen=false;continue}const pt=`${x(i).toFixed(1)},${y(h[i][key]).toFixed(1)}`;d+=(pen?' L':'M')+pt;pen=true;last=pt}
+  line=d?`<path d="${d}" fill="none" stroke="var(--acc)" stroke-width="2.5"/>`:'';
+  lp=last.split(',');
+ }
  let bars='',ax2='',guide='',halo='',hits='';
  if(B){const vals=B.filter(v=>v>0);
   const t0=parseDay(h[0].date),byDate={};
@@ -206,7 +217,7 @@ async function openP(id){const r=await fetch('/api/post/'+id);if(!r.ok){$('pn').
  $('pn').innerHTML=`<button class="x" onclick="closeP()" aria-label="Close">\u00d7</button><div class="lbl">@${p.account} \u00b7 ${new Date(p.created_at).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}</div>
  <div class="ptext">${esc(p.text)}</div><a class="plink" href="${p.url}" target="_blank" rel="noopener">View on x.com \u2197</a>
  <div class="sub" style="margin-top:6px">${h.length} daily snapshot${h.length==1?'':'s'}, ${h[0].date} to ${dl(last.date)}</div>
- <div class="mg">${M.map(([k,l])=>`<div class="card"><div class="lbl">${l}</div><div class="mv">${fmt(last[k])}</div><div class="sub">${prev?sign(last[k]-prev[k])+' since '+prev.date:'first snapshot'}</div>${chart(h,k,{W:300,H:120,fs:12,quiet:1})}</div>`).join('')}</div>
+ <div class="mg">${M.map(([k,l])=>`<div class="card"><div class="lbl">${l}</div><div class="mv">${fmt(last[k])}</div><div class="sub">${prev?(last[k]==null||prev[k]==null?'<span class="sub">-</span>':sign(last[k]-prev[k]))+' since '+prev.date:'first snapshot'}</div>${chart(h,k,{W:300,H:120,fs:12,quiet:1})}</div>`).join('')}</div>
  ${h.length<2?'<div class="empty">Charts fill in as daily snapshots run.</div>':''}`;$('ov').classList.add('open')}
 function route(){const m=location.hash.match(/^#post\/(\d+)$/);if(m)openP(m[1]);else $('ov').classList.remove('open')}
 addEventListener('hashchange',route);
