@@ -39,7 +39,7 @@ A small, self-hosted X (Twitter) stats dashboard. Track follower growth and per-
 ```
 
 - **One binary.** `xstats` embeds the static frontend with `go:embed` and uses `modernc.org/sqlite`, so it builds with `CGO_ENABLED=0` and has no runtime dependencies.
-- **SQLite.** Tables: `accounts` (`last_ingest` is set on each successful ingest and stays null until then), `follower_snapshots` (one row per account per day), `post_metrics` (one row per post per day), `clickthroughs` (one row per day). `post_metrics.source` is `live` for a snapshot bundle and `archive` for an archive import. Re-ingesting a day replaces that day's live rows. Importing an archive again does not add a second archive row.
+- **SQLite.** Tables: `accounts` (`last_ingest` is set on each successful ingest and stays null until then), `follower_snapshots` (one row per account per day), `post_metrics` (one row per post per day), `clickthroughs` (one row per day), `daily_follows` (one analytics overview row per account per day: new follows, unfollows, and source). `post_metrics.source` is `live` for a snapshot bundle and `archive` for an archive import. Re-ingesting a day replaces that day's live rows. Importing an archive again does not add a second archive row.
 - **Ingest API.** `POST /api/ingest` with `Authorization: Bearer <token>` accepts a snapshot bundle. The token comes from `XSTATS_INGEST_TOKEN`; if it is unset, ingest is disabled.
 - **Health.** `GET /api/health` uses that same bearer token. If `XSTATS_INGEST_TOKEN` is unset, every health request is refused, same as ingest. A 200 body is JSON with `version`, `commit`, `server_time` (RFC3339, UTC), and `accounts`. Each account has only `latest_snapshot_date` and `last_ingest` (`last_ingest` is null until a successful ingest records it). No post text and no follower counts or other metrics. Example: `curl -sH "Authorization: Bearer $XSTATS_INGEST_TOKEN" http://127.0.0.1:8080/api/health`.
 - **Read API.** `GET /api/data` (accounts, follower history, daily engagement, recent posts) and `GET /api/post/<id>` (daily history for one post).
@@ -162,6 +162,23 @@ A missing required field, a wrong JSON type, or an unexpected `window.YTD` prefi
 `data/note-tweet.js` is not read. A long post keeps the `full_text` from `tweets.js`.
 
 This has not been checked against a real X archive. The field names come from public documentation of the archive format.
+
+## Analytics import
+
+`xstats import-analytics` reads an X Analytics CSV. It does not call the X API. Open [x.com/i/account_analytics](https://x.com/i/account_analytics) and export the posts file (name like `account_analytics_content_<from>_<to>.csv`) and the account overview file (`account_overview_analytics.csv`).
+
+```
+bin/xstats import-analytics --db data/xstats.db --account example ~/Downloads/account_analytics_content_2026-01-01_2026-01-31.csv
+bin/xstats import-analytics --db data/xstats.db --account example ~/Downloads/account_overview_analytics.csv
+```
+
+The header row picks the export. Columns match by name, so order does not matter. A UTF-8 BOM and spaces around a header are ignored. Extra columns next to a known header are ignored. If the header matches neither export, or a required column is missing, the command exits non-zero, lists the columns it found and the columns it expected, and writes nothing.
+
+The posts export only updates posts already in the database. On an archive row it fills a NULL impression count and a NULL reply count. A live snapshot is left alone, including a live NULL impression. Likes, reposts, and text are not changed. Posts that are not in the database are skipped and counted. A later file does not replace a count that is already stored. A second run reports 0 updates.
+
+The overview export stores each day's New follows and Unfollows in `daily_follows`. `source` is `analytics`. `--account` is required, because the file has no handle. The handle is lowercased and a leading `@` is stripped. The Date cell is a calendar day and is stored as that day, with no `XSTATS_TZ` shift. A day that already has a follower snapshot is not written. A day already stored is left as it was, including when the file's counts changed. Creating the account row does not set `last_ingest`. A second run reports 0 updates.
+
+Date cells look like `Wed, Oct 21, 2026`. The file quotes that field because it contains commas. Spaces around the value are ignored. Both `Oct 6` and `Oct 06` are accepted. A wrong weekday, a bare `YYYY-MM-DD`, or a timestamp is an error that names the row and the value, and the import writes nothing. The shape was checked against real posts and overview exports on 2026-10-21. Only days 16 to 22 were in those files, so the padding for days 1 to 9 is not confirmed. No real export rows are in this repo.
 
 ## Engagement score
 

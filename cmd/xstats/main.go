@@ -25,7 +25,8 @@ const schema = `
 CREATE TABLE IF NOT EXISTS accounts(handle TEXT PRIMARY KEY, user_id TEXT, name TEXT, avatar TEXT);
 CREATE TABLE IF NOT EXISTS follower_snapshots(account TEXT, date TEXT, followers INT, following INT, posts INT, PRIMARY KEY(account,date));
 CREATE TABLE IF NOT EXISTS post_metrics(post_id TEXT, account TEXT, date TEXT, text TEXT, created_at TEXT, impressions INT, likes INT, replies INT, reposts INT, source TEXT NOT NULL DEFAULT 'live', PRIMARY KEY(post_id,date));
-CREATE TABLE IF NOT EXISTS clickthroughs(date TEXT PRIMARY KEY, visits INT);`
+CREATE TABLE IF NOT EXISTS clickthroughs(date TEXT PRIMARY KEY, visits INT);
+CREATE TABLE IF NOT EXISTS daily_follows(account TEXT NOT NULL, date TEXT NOT NULL, new_follows INT NOT NULL, unfollows INT NOT NULL, source TEXT NOT NULL, PRIMARY KEY(account, date));`
 
 func openDB(p string) *sql.DB {
 	db, err := sql.Open("sqlite", p)
@@ -433,7 +434,7 @@ func bearerAuthorized(r *http.Request, tok string) bool {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("usage: xstats serve|ingest|import-archive|version [flags]")
+		fmt.Println("usage: xstats serve|ingest|import-archive|import-analytics|version [flags]")
 		os.Exit(2)
 	}
 	if os.Args[1] == "version" {
@@ -443,7 +444,7 @@ func main() {
 	fsFlags := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 	dbp := fsFlags.String("db", "xstats.db", "SQLite path")
 	addr := fsFlags.String("addr", "127.0.0.1:8080", "listen address")
-	account := fsFlags.String("account", "", "archive handle if data/account.js is absent")
+	account := fsFlags.String("account", "", "handle for an analytics CSV, or for an archive with no data/account.js")
 	fsFlags.Parse(os.Args[2:])
 	if _, err := statsLocation(); err != nil {
 		log.Fatal(err)
@@ -462,6 +463,14 @@ func main() {
 			log.Fatal("usage: xstats import-archive --db PATH [--account HANDLE] <zip-or-dir>")
 		}
 		if err := importArchive(db, args[0], *account); err != nil {
+			log.Fatal(err)
+		}
+	case "import-analytics":
+		args := fsFlags.Args()
+		if len(args) != 1 {
+			log.Fatal("usage: xstats import-analytics --db PATH [--account HANDLE] <csv>")
+		}
+		if err := importAnalytics(db, args[0], *account); err != nil {
 			log.Fatal(err)
 		}
 	case "serve":
