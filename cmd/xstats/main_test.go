@@ -706,6 +706,46 @@ func TestPageMarksEngagement(t *testing.T) {
 	}
 }
 
+// The posts table pages 25 at a time. Show more appends the next page.
+// Range changes, account switches and the replies toggle all go through
+// render, which starts again at the first page.
+func TestPostsShowMore(t *testing.T) {
+	body := get(newMux(openTestDB(t), "secret"), "/").Body.String()
+	for _, s := range []string{
+		`const POST_PAGE=25`,
+		`let postLimit=POST_PAGE`,
+		`(a.posts||[]).filter(p=>inc||!p.is_reply)`,
+		`if(total)note='Showing '+fmt(n)+' of '+fmt(total)+' posts. '+note`,
+		`else if(html)$('rows').insertAdjacentHTML('beforeend',html)`,
+		`$('more').hidden=n>=total`,
+		`postLimit=POST_PAGE;paintPosts(a,false)`,
+		`$('more').onclick=()=>{if(!D||!D.accounts[cur])return;postLimit+=POST_PAGE;paintPosts(D.accounts[cur],true)}`,
+		`<button type="button" class="mor" id="more" hidden>Show more</button>`,
+		`.mor{margin-top:14px;height:40px;border-radius:10px;border:1px solid var(--bd);background:var(--sw);color:var(--fg);font:inherit;font-size:14px;font-weight:600;padding:0 18px;cursor:pointer}`,
+		`.mor:hover,.mor:focus-visible{border-color:var(--acc);outline:none}`,
+		`.mor[hidden]{display:none}`,
+		`.mor{display:block;width:100%}`,
+		`$('sw').onchange=e=>{closePicker(false);cur=e.target.value;localStorage.setItem('acct',cur);const u=pageURL();history.replaceState(null,'',u);render()}`,
+		`$('incr').onchange=e=>{localStorage.setItem('incReplies',e.target.checked?'1':'0');render()}`,
+		`function applyRange(k){closePicker(true);rg=k;load()}`,
+		`function zoomTo(f,t){hideTip();CR={from:f,to:t};rg='custom';histMode='push';load()}`,
+		`D=await r.json();bootHandles();saveRange();render()`,
+		`saveRange();bootHandles();render()}`,
+	} {
+		if !strings.Contains(body, s) {
+			t.Fatalf("page missing %q", s)
+		}
+	}
+	more := body[strings.Index(body, "$('more').onclick"):]
+	more = more[:strings.Index(more, "};")]
+	if strings.Contains(more, "render()") {
+		t.Fatal("show more calls render and would reset the page")
+	}
+	if strings.Contains(body, "most recent") || strings.Contains(body, "const cap=") {
+		t.Fatal("12-post cap still in the page")
+	}
+}
+
 // 05:30 UTC is still the previous Mountain Time evening. That post belongs on
 // today's Denver snapshot, and the next UTC date is not in progress.
 func TestEveningMountainTime(t *testing.T) {
