@@ -706,25 +706,45 @@ func TestPageMarksEngagement(t *testing.T) {
 	}
 }
 
-// The posts table pages 25 at a time. Show more appends the next page.
-// Range changes, account switches and the replies toggle all go through
-// render, which starts again at the first page.
+// The posts table shows one page of 25, newest first, for the selected range.
+// The first view is page 1 with a Show more button when another page exists.
+// Show more hides that button, opens page 2, and switches to page numbers.
+// Each number replaces the rows with that page. A new range, account, or
+// replies toggle goes through render, which returns to page 1 and Show more.
 func TestPostsShowMore(t *testing.T) {
 	body := get(newMux(openTestDB(t), "secret"), "/").Body.String()
 	for _, s := range []string{
 		`const POST_PAGE=25`,
-		`let postLimit=POST_PAGE`,
+		`let postPage=0,postPaged=false`,
 		`(a.posts||[]).filter(p=>inc||!p.is_reply)`,
-		`if(total)note='Showing '+fmt(n)+' of '+fmt(total)+' posts. '+note`,
-		`else if(html)$('rows').insertAdjacentHTML('beforeend',html)`,
-		`$('more').hidden=n>=total`,
-		`postLimit=POST_PAGE;paintPosts(a,false)`,
-		`$('more').onclick=()=>{if(!D||!D.accounts[cur])return;postLimit+=POST_PAGE;paintPosts(D.accounts[cur],true)}`,
+		`const total=shown.length,pages=Math.max(1,Math.ceil(total/POST_PAGE))`,
+		`const from=postPage*POST_PAGE,n=Math.min(from+POST_PAGE,total)`,
+		`const rows=shown.slice(from,n)`,
+		`const span=from&&n>from+1?fmt(from+1)+'-'+fmt(n):fmt(n)`,
+		`note='Showing '+span+' of '+fmt(total)+' posts. '+note`,
+		`$('rows').innerHTML=html||'<tr><td><div class="empty"`,
+		`const paging=postPaged&&pages>1`,
+		`$('more').hidden=paging||n>=total`,
+		`pgs.hidden=!paging`,
+		`pageList(pages,postPage+1)`,
+		`aria-current="page"`,
+		`data-page=`,
+		`if(pages>7&&!edge&&!near&&!head&&!tail)`,
+		`'\u2026'`,
+		`postPage=0;postPaged=false;paintPosts(a)`,
+		`$('more').onclick=()=>{if(!D||!D.accounts[cur])return;postPaged=true;postPage=1;paintPosts(D.accounts[cur])}`,
+		`$('pgs').onclick=e=>{const b=e.target.closest('[data-page]');if(!b||!D||!D.accounts[cur])return;const n=+b.dataset.page-1;if(n===postPage)return;postPage=n;paintPosts(D.accounts[cur])}`,
 		`<button type="button" class="mor" id="more" hidden>Show more</button>`,
+		`<nav class="pgs" id="pgs" hidden aria-label="Posts pages"></nav>`,
 		`.mor{margin-top:14px;height:40px;border-radius:10px;border:1px solid var(--bd);background:var(--sw);color:var(--fg);font:inherit;font-size:14px;font-weight:600;padding:0 18px;cursor:pointer}`,
 		`.mor:hover,.mor:focus-visible{border-color:var(--acc);outline:none}`,
 		`.mor[hidden]{display:none}`,
 		`.mor{display:block;width:100%}`,
+		`.pgs{margin-top:14px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}`,
+		`.pgs[hidden]{display:none}`,
+		`.pg{height:40px;min-width:40px;border-radius:10px;border:1px solid var(--bd);background:var(--sw);color:var(--fg);font:inherit;font-size:14px;font-weight:600;padding:0 12px;cursor:pointer}`,
+		`.pg:hover,.pg:focus-visible{border-color:var(--acc);outline:none}`,
+		`.pg[aria-current=page]{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc);cursor:default}`,
 		`$('sw').onchange=e=>{closePicker(false);cur=e.target.value;localStorage.setItem('acct',cur);const u=pageURL();history.replaceState(null,'',u);render()}`,
 		`$('incr').onchange=e=>{localStorage.setItem('incReplies',e.target.checked?'1':'0');render()}`,
 		`function applyRange(k){closePicker(true);rg=k;load()}`,
@@ -740,6 +760,14 @@ func TestPostsShowMore(t *testing.T) {
 	more = more[:strings.Index(more, "};")]
 	if strings.Contains(more, "render()") {
 		t.Fatal("show more calls render and would reset the page")
+	}
+	pages := body[strings.Index(body, "$('pgs').onclick"):]
+	pages = pages[:strings.Index(pages, "};")]
+	if strings.Contains(pages, "render()") || strings.Contains(pages, "postPaged=false") {
+		t.Fatal("page numbers reset the Show more state")
+	}
+	if strings.Contains(body, "insertAdjacentHTML") || strings.Contains(body, "postLimit") {
+		t.Fatal("show more still appends pages")
 	}
 	if strings.Contains(body, "most recent") || strings.Contains(body, "const cap=") {
 		t.Fatal("12-post cap still in the page")
