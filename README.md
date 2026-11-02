@@ -405,6 +405,8 @@ Put these in `~/.config/xstats/deploy.env` (mode 0600, see `.env.deploy.example`
 
 `deploy.sh` installs Caddy from its official apt repo, creates an `xstats` system user, installs the binary to `/usr/local/bin`, the unit from `deploy/xstats.service`, and `/etc/xstats/env` (mode 0640) with the ingest token, `XSTATS_ACCOUNTS`, `XSTATS_TZ` when that zone is set, and `XSTATS_START_DATES` when that list is set. Writing the env file restarts `xstats`, which is what picks up a start-date change. The password is sent over SSH stdin and hashed on the server with `caddy hash-password`; only the bcrypt hash is stored. The script is idempotent.
 
+`Caddyfile.tmpl` ends with a top-level `import /etc/caddy/*.caddy`, so other sites on the same server (for example xpost's `/etc/caddy/xpost.caddy`) survive `set-auth.sh` rewriting `/etc/caddy/Caddyfile`. With no such files the glob matches nothing and Caddy starts normally. It never matches `Caddyfile`, `Caddyfile.new` or `*.bak-*` backups.
+
 Each deploy keeps the previous binary as `/usr/local/bin/xstats.prev` and backs up the database to `/var/lib/xstats/xstats.db.bak-<timestamp>`.
 
 To update only the binary later:
