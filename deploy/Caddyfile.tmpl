@@ -17,3 +17,9 @@ __DOMAIN__ {
 		reverse_proxy 127.0.0.1:8080
 	}
 }
+
+# Other sites on this server (for example /etc/caddy/xpost.caddy from xpost's
+# deploy) live in their own /etc/caddy/*.caddy files. set-auth.sh rewrites this
+# file on every deploy, so the import lives here. A glob with no matches is
+# fine, and it cannot match Caddyfile, Caddyfile.new or *.bak-* backups.
+import /etc/caddy/*.caddy
